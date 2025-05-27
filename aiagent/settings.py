@@ -160,7 +160,9 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+DEFAULT_STATIC_URL = '/static/'
+# آدرس کامل برای محیط production از طریق متغیر محیطی
+STATIC_URL = config('DJANGO_STATIC_URL', default=DEFAULT_STATIC_URL)
 # STATIC_ROOT برای هاست CPanel بسیار مهم است.
 # این مسیر باید به پوشه‌ای در هاست شما اشاره کند که فایل‌های استاتیک پس از collectstatic در آن جمع‌آوری می‌شوند.
 # معمولاً در کنار پوشه پروژه یا داخل public_html/static قرار می‌گیرد.
