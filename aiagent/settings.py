@@ -12,7 +12,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
-from decouple import config
+from decouple import config # شما این را دارید، عالی!
+import os # برای ALLOWED_HOSTS اگر از os.environ استفاده می‌کنید یا برای STATIC_ROOT/MEDIA_ROOT
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -21,13 +22,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 SECRET_KEY = config('SECRET_KEY')
-METIS_API_KEY = 'tpsg-rzXGQBUB57hQLyyP0p9AxtU96rTboG6'
-METIS_BOT_ID = 'be1823aa-ad0d-4827-9c27-68a388fb7551'
-AUTH_USER_MODEL = 'users_ai.CustomUser'
+# مقادیر زیر را از متغیرهای محیطی می‌خوانیم
+METIS_API_KEY = config('METIS_API_KEY', default='your_default_metis_api_key_if_any')
+METIS_BOT_ID = config('METIS_BOT_ID', default='your_default_metis_bot_id_if_any')
 
-DEBUG = True
+AUTH_USER_MODEL = 'users_ai.CustomUser' # این صحیح است
 
-ALLOWED_HOSTS = []
+# DEBUG را از متغیر محیطی می‌خوانیم. برای هاست CPanel باید False باشد.
+# default=False یعنی اگر متغیر محیطی DEBUG تعریف نشده باشد، False در نظر گرفته می‌شود.
+DEBUG = config('DEBUG', default=False, cast=bool)
+
+# ALLOWED_HOSTS را از متغیر محیطی می‌خوانیم.
+# مقدار پیش‌فرض برای توسعه محلی است. در CPanel باید دامنه شما باشد.
+ALLOWED_HOSTS_STRING = config('ALLOWED_HOSTS', default='127.0.0.1,localhost')
+ALLOWED_HOSTS = [s.strip() for s in ALLOWED_HOSTS_STRING.split(',')]
+
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
@@ -36,7 +45,7 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': False,
     'UPDATE_LAST_LOGIN': False,
     'ALGORITHM': 'HS256',
-    'SIGNING_KEY': SECRET_KEY,
+    'SIGNING_KEY': SECRET_KEY, # از SECRET_KEY که بالاتر از env خوانده شده استفاده می‌کند
     'VERIFYING_KEY': None,
     'AUDIENCE': None,
     'ISSUER': None,
@@ -65,26 +74,35 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'users_ai',
+    'users_ai', # اپلیکیشن شما
     'rest_framework_simplejwt',
+    # 'corsheaders', # اگر از django-cors-headers استفاده می‌کنید، باید اینجا اضافه شود و در MIDDLEWARE هم
 ]
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
-    'DEFAULT_PERMISSION_CLASSES': (),  # غیرفعال کردن مجوزهای پیش‌فرض
+    'DEFAULT_PERMISSION_CLASSES': (),
 }
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    # 'corsheaders.middleware.CorsMiddleware', # اگر از django-cors-headers استفاده می‌کنید
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',  # غیرفعال شده برای API
+    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# اگر از django-cors-headers استفاده می‌کنید، تنظیمات مربوطه را اضافه کنید:
+# CORS_ALLOWED_ORIGINS = [
+#     # "https://yourfrontenddomain.com", # دامنه‌هایی که اجازه دسترسی به API شما را دارند
+# ]
+# CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=False, cast=bool) # یا برای تست، همه را مجاز کنید (در production توصیه نمی‌شود)
+
 
 ROOT_URLCONF = 'aiagent.urls'
 
@@ -110,12 +128,12 @@ WSGI_APPLICATION = 'aiagent.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'aiagent',
-        'USER': 'root',
-        'PASSWORD': '125369874',
-        'HOST': 'localhost',
-        'PORT': '',
+        'ENGINE': config('DB_ENGINE', default='django.db.backends.mysql'),
+        'NAME': config('DB_NAME'),
+        'USER': config('DB_USER'),
+        'PASSWORD': config('DB_PASSWORD'),
+        'HOST': config('DB_HOST', default='localhost'),
+        'PORT': config('DB_PORT', default=''), # خالی برای پورت پیش‌فرض
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'charset': 'utf8mb4',
@@ -127,35 +145,35 @@ DATABASES = {
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    # ... (بدون تغییر) ...
 ]
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
-
 TIME_ZONE = 'UTC'
-
 USE_I18N = True
-
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+# STATIC_ROOT برای هاست CPanel بسیار مهم است.
+# این مسیر باید به پوشه‌ای در هاست شما اشاره کند که فایل‌های استاتیک پس از collectstatic در آن جمع‌آوری می‌شوند.
+# معمولاً در کنار پوشه پروژه یا داخل public_html/static قرار می‌گیرد.
+# مثال: STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles_production')
+# یا اگر می‌خواهید خارج از پوشه پروژه باشد (که گاهی بهتر است):
+# STATIC_ROOT = '/home/yourcpanelusername/public_html/static' (این مسیر را باید با مسیر واقعی هاست خود جایگزین کنید)
+# این مسیر باید توسط وب سرور (Apache/LiteSpeed) قابل دسترس باشد.
+STATIC_ROOT = config('DJANGO_STATIC_ROOT', default=os.path.join(BASE_DIR, 'staticfiles_production'))
+
+
+# Media files (User-uploaded files)
+# MEDIA_URL = '/media/'
+# MEDIA_ROOT = config('DJANGO_MEDIA_ROOT', default=os.path.join(BASE_DIR, 'mediafiles_production'))
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -169,11 +187,27 @@ LOGGING = {
         },
     },
     'loggers': {
-        '': {
+        '': { # لاگر ریشه
             'handlers': ['console'],
-            'level': 'DEBUG',
+            'level': config('DJANGO_LOG_LEVEL', default='INFO'), # سطح لاگ را هم از env می‌خوانیم (مثلاً INFO برای production)
+        },
+        'django': { # تنظیمات لاگر خود جنگو
+            'handlers': ['console'],
+            'level': config('DJANGO_LOG_LEVEL_DJANGO', default='INFO'),
+            'propagate': False,
+        },
+        'django.db.backends': { # لاگ کوئری‌های دیتابیس (برای دیباگ مفید است، در production با احتیاط)
+            'handlers': ['console'],
+            'level': config('DJANGO_LOG_LEVEL_DB', default='INFO'),
+            'propagate': False,
+        },
+        'users_ai': { # لاگر مخصوص اپلیکیشن خودتان
+            'handlers': ['console'],
+            'level': config('DJANGO_LOG_LEVEL_APP', default='DEBUG'), # برای اپ خودتان می‌توانید DEBUG بگذارید
+            'propagate': False,
         },
     },
 }
+
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
