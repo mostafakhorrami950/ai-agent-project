@@ -96,7 +96,7 @@ class MetisBotAPIUpdater:
         Returns a list of tool definitions in Metis AI's 'Function' format for sending to Bot API.
         This schema is used when creating/updating a Bot in Metis AI.
         """
-        django_api_base_url = "https://small-ducks-know.loca.lt/api"  # This should be your public Django API URL in production!
+        django_api_base_url = "https://api.mobixtube.ir/api"  # This should be your public Django API URL in production!
 
         def create_arg(name, description, arg_type, required, enum_values=None):
             arg = {"name": name, "description": description, "type": arg_type, "required": required}

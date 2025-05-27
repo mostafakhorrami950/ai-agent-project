@@ -168,7 +168,7 @@ class MetisAIService:
         # این URL باید در صورت استقرار پروژه، به آدرس واقعی API شما تغییر کند.
         # مثلاً "https://your-django-api.com/api"
         # در محیط پروداکشن، این باید به آدرس عمومی API شما اشاره کند.
-        django_api_base_url = "http://127.0.0.1:8000/api"  # این باید در محیط پروداکشن تغییر کند!
+        django_api_base_url = "https://api.mobixtube.ir/api"  # این باید در محیط پروداکشن تغییر کند!
 
         def create_arg(name, description, arg_type, required, enum_values=None):
             arg = {"name": name, "description": description, "type": arg_type, "required": required}
