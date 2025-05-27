@@ -74,7 +74,6 @@ class UserProfileAdmin(admin.ModelAdmin): # <--- تعریف کلاس UserProfile
 class UserRoleAdmin(admin.ModelAdmin):
     list_display = ('name', 'max_active_sessions', 'session_duration_hours', 'daily_message_limit', 'psych_test_message_limit', 'psych_test_duration_hours')
     search_fields = ('name',)
-admin.site.register(UserRole, UserRoleAdmin)
 
 
 # 3. ثبت مدل‌ها با استفاده از کلاس‌های ادمین تعریف شده در بالا
