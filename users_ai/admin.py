@@ -70,7 +70,11 @@ class UserProfileAdmin(admin.ModelAdmin): # <--- تعریف کلاس UserProfile
         return obj.user.phone_number
     user_phone_number.short_description = 'شماره موبایل کاربر'
 
-# ... سایر کلاس‌های ادمین سفارشی اگر دارید ...
+# users_ai/admin.py
+class UserRoleAdmin(admin.ModelAdmin):
+    list_display = ('name', 'max_active_sessions', 'session_duration_hours', 'daily_message_limit', 'psych_test_message_limit', 'psych_test_duration_hours')
+    search_fields = ('name',)
+admin.site.register(UserRole, UserRoleAdmin)
 
 
 # 3. ثبت مدل‌ها با استفاده از کلاس‌های ادمین تعریف شده در بالا

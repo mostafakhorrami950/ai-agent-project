@@ -446,32 +446,46 @@ class AIAgentChatView(APIView):
         logger.error(f"Error updating FeedbackLearning for user {user.phone_number}: {serializer.errors}")
         return {"status": "error", "message": "خطا در بازخورد و یادگیری.", "errors": serializer.errors}
 
+    # users_ai/views.py
     def post(self, request):
-        logger.debug(f"AIAgentChatView received POST request. Request data: {request.data}")
         user = request.user
         user_profile = get_object_or_404(UserProfile, user=user)
         user_message_content = request.data.get('message')
         session_id_from_request = request.data.get('session_id')
         is_psych_test = request.data.get('is_psych_test', False)
+
+        if not user_message_content:
+            return Response({'detail': 'محتوای پیام الزامی است.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not self._check_message_limit(user_profile):
+            return Response({'detail': 'محدودیت پیام روزانه.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        metis_service = MetisAIService()
+        active_sessions = self._get_active_sessions_for_user(user)
+        current_session_instance = None
+
         if is_psych_test:
             message_limit = user_profile.role.psych_test_message_limit
             duration_hours = user_profile.role.psych_test_duration_hours
             session_name = "Psychological Test"
             psych_sessions = active_sessions.filter(ai_response_name=session_name)
+
             if psych_sessions.exists():
-                session = psych_sessions.first()
-                chat_history = json.loads(session.chat_history) if session.chat_history else []
+                current_session_instance = psych_sessions.first()
+                chat_history = json.loads(
+                    current_session_instance.chat_history) if current_session_instance.chat_history else []
                 if len([m for m in chat_history if m['role'] == 'user']) >= message_limit:
-                    return Response({'detail': 'محدودیت پیام تست روان‌شناسی.'}, status=429)
+                    return Response({'detail': 'محدودیت پیام تست روان‌شناسی.'},
+                                    status=status.HTTP_429_TOO_MANY_REQUESTS)
             else:
                 internal_session_id = str(uuid.uuid4())
-                prompt = "تست MBTI: سوالات پویا برای تعیین تیپ شخصیتی بپرس و تحلیل کن."
+                prompt = "تست MBTI: سوالات پویا برای تعیین تیپ شخصیتی (E/I, S/N, T/F, J/P) بپرس و تیپ نهایی را تحلیل کن."
                 metis_response = metis_service.create_chat_session(
                     bot_id=metis_service.bot_id,
                     user_data=self._get_user_info_for_metis_api(user_profile),
                     initial_messages=[{"type": "SYSTEM", "content": prompt}]
                 )
-                session = AiResponse.objects.create(
+                current_session_instance = AiResponse.objects.create(
                     user=user,
                     ai_session_id=internal_session_id,
                     metis_session_id=metis_response.get("id"),
@@ -479,213 +493,65 @@ class AIAgentChatView(APIView):
                     chat_history="[]",
                     expires_at=timezone.now() + timezone.timedelta(hours=duration_hours)
                 )
-
-        if is_psych_test and 'personality_type' in metis_message_response:
-            user_profile.ai_psychological_test = json.dumps({
-                "responses": chat_history_list,
-                "personality_type": metis_message_response['personality_type']
-            }, ensure_ascii=False)
-            user_profile.save()
-            session.is_active = False
-            session.save()
-
-        if not user_message_content:
-            logger.warning("Message content is missing in request.")
-            return Response({'detail': 'محتوای پیام الزامی است.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not self._check_message_limit(user_profile):
-            return Response({'detail': 'محدودیت پیام روزانه شما به پایان رسیده است.'},
-                            status=status.HTTP_429_TOO_MANY_REQUESTS)
-
-        metis_service = MetisAIService()
-        active_sessions = self._get_active_sessions_for_user(user)
-        current_session_instance = None
-
-        if session_id_from_request:
-            current_session_instance = active_sessions.filter(ai_session_id=session_id_from_request).first()
-            if not current_session_instance:
-                logger.warning(
-                    f"Provided session ID {session_id_from_request} not found or inactive for user {user.phone_number}.")
-                return Response({'detail': 'شناسه جلسه ارائه شده نامعتبر یا غیرفعال است.'},
-                                status=status.HTTP_404_NOT_FOUND)
-            logger.info(
-                f"User {user.phone_number} continuing internal session {session_id_from_request} with Metis session {current_session_instance.metis_session_id}.")
         else:
-            if user_profile.role and active_sessions.count() >= user_profile.role.max_active_sessions:
-                logger.warning(
-                    f"User {user.phone_number} reached max active chat sessions ({user_profile.role.max_active_sessions}).")
-                return Response({
-                    'detail': 'به حداکثر تعداد جلسات گفتگوی فعال رسیده‌اید. لطفاً یک جلسه موجود را ببندید یا طرح خود را ارتقا دهید.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            try:
+            # منطق فعلی برای چت معمولی (بدون تغییر)
+            if session_id_from_request:
+                current_session_instance = active_sessions.filter(ai_session_id=session_id_from_request).first()
+                if not current_session_instance:
+                    return Response({'detail': 'جلسه نامعتبر.'}, status=status.HTTP_404_NOT_FOUND)
+            else:
+                if user_profile.role and active_sessions.count() >= user_profile.role.max_active_sessions:
+                    return Response({'detail': 'حداکثر جلسات فعال.'}, status=status.HTTP_400_BAD_REQUEST)
                 internal_session_id = str(uuid.uuid4())
-                user_info_for_metis = self._get_user_info_for_metis_api(user_profile)
-                initial_messages_for_metis = []
-                user_context_prompt = self._get_user_context_for_ai(user_profile)  # Get comprehensive context
-                if user_context_prompt:
-                    initial_messages_for_metis.append({"type": "SYSTEM", "content": user_context_prompt})
-
-                logger.info(
-                    f"Attempting to create Metis AI session for bot_id: {metis_service.bot_id} for user {user.phone_number}.")
-                metis_ai_session_response = metis_service.create_chat_session(
+                metis_response = metis_service.create_chat_session(
                     bot_id=metis_service.bot_id,
-                    user_data=user_info_for_metis,
-                    initial_messages=initial_messages_for_metis
+                    user_data=self._get_user_info_for_metis_api(user_profile),
+                    initial_messages=[{"type": "SYSTEM", "content": self._get_user_context_for_ai(user_profile)}]
                 )
-                metis_session_id = metis_ai_session_response.get("id")
-
-                if not metis_session_id:
-                    logger.error(
-                        f"Metis AI returned no session ID: {metis_ai_session_response} for user {user.phone_number}")
-                    raise Exception("Failed to create Metis AI session. No ID returned.")
-
                 current_session_instance = AiResponse.objects.create(
                     user=user,
                     ai_session_id=internal_session_id,
-                    metis_session_id=metis_session_id,
+                    metis_session_id=metis_response.get("id"),
                     ai_response_name=f"Chat Session {timezone.now().strftime('%Y-%m-%d %H:%M')}",
-                    chat_history="[]"  # Initialize with empty JSON array string
+                    chat_history="[]"
                 )
-                logger.info(
-                    f"New internal session {internal_session_id} created for user {user.phone_number} with Metis session {metis_session_id}.")
 
-            except ConnectionError as e:
-                logger.exception(f"Connection error during Metis AI session creation for user {user.phone_number}: {e}")
-                return Response({'detail': f'خطا در اتصال به سرویس AI هنگام ایجاد جلسه: {e}'},
-                                status=status.HTTP_503_SERVICE_UNAVAILABLE)
-            except Exception as e:
-                logger.exception(f"Unexpected error during Metis AI session creation for user {user.phone_number}: {e}")
-                return Response({'detail': f'خطای پیش‌بینی نشده هنگام ایجاد جلسه AI: {e}'},
-                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        chat_history_list = json.loads(
+            current_session_instance.chat_history) if current_session_instance.chat_history else []
+        chat_history_list.append({"role": "user", "content": user_message_content, "timestamp": str(timezone.now())})
 
-        try:
-            chat_history_list = json.loads(
-                current_session_instance.chat_history) if current_session_instance.chat_history else []
+        metis_response = metis_service.send_message(
+            session_id=current_session_instance.metis_session_id,
+            message_content=user_message_content,
+            message_type="USER"
+        )
 
-            # Add user message to history (before sending to AI, as it's a confirmed interaction part)
-            chat_history_list.append(
-                {"role": "user", "content": user_message_content, "timestamp": str(timezone.now())})
+        ai_response = metis_response.get('content', 'پاسخ نامعتبر از AI.')
+        personality_type = None
 
-            logger.debug(
-                f"Sending user message to Metis AI session {current_session_instance.metis_session_id} for user {user.phone_number}: {user_message_content}")
+        if is_psych_test and 'personality_type' in metis_response:
+            personality_type = metis_response['personality_type']
+            user_profile.ai_psychological_test = json.dumps({
+                "responses": chat_history_list,
+                "personality_type": personality_type
+            }, ensure_ascii=False)
+            user_profile.save(update_fields=['ai_psychological_test'])
+            current_session_instance.is_active = False
+            current_session_instance.save()
 
-            metis_message_response = metis_service.send_message(
-                session_id=current_session_instance.metis_session_id,
-                message_content=user_message_content,  # Send only the current user message
-                message_type="USER"
-            )
-            logger.debug(
-                f"Metis AI raw message response (first call) for user {user.phone_number}: {json.dumps(metis_message_response, ensure_ascii=False, indent=2)}")
+        chat_history_list.append({"role": "assistant", "content": ai_response, "timestamp": str(timezone.now())})
+        current_session_instance.chat_history = json.dumps(chat_history_list, ensure_ascii=False)
+        current_session_instance.save(update_fields=['chat_history', 'updated_at'])
 
-            ai_final_text_response = None
-            tool_calls_from_metis = []  # From Metis 'actions' -> 'function_call'
+        self._increment_message_count(user_profile)
 
-            if metis_message_response and 'actions' in metis_message_response and metis_message_response['actions']:
-                assistant_entry_for_history = {"role": "assistant", "content": None, "tool_calls": [],
-                                               "timestamp": str(timezone.now())}
+        return Response({
+            'ai_response': ai_response,
+            'session_id': current_session_instance.ai_session_id,
+            'chat_history': chat_history_list,
+            'personality_type': personality_type
+        }, status=status.HTTP_200_OK)
 
-                for action in metis_message_response['actions']:
-                    if action.get('type') == 'FUNCTION_CALL' and action.get('function_call'):
-                        tool_calls_from_metis.append(action['function_call'])
-                        # Record the AI's intention to call tools in history
-                        assistant_entry_for_history["tool_calls"].append(action['function_call'])
-                    elif action.get('type') == 'MESSAGE' and action.get('message') and action.get('message').get(
-                            'content'):
-                        # If there's also a direct message content from AI along with potential (or no) tool calls
-                        ai_final_text_response = action['message']['content']
-                        assistant_entry_for_history["content"] = ai_final_text_response
-
-                if tool_calls_from_metis:
-                    logger.info(f"Metis AI requested tool calls for user {user.phone_number}: {tool_calls_from_metis}")
-                    chat_history_list.append(assistant_entry_for_history)  # Add AI's turn (tool call request)
-
-                    tool_outputs_for_metis_api = []  # This will be sent to Metis API
-                    for tool_call_details in tool_calls_from_metis:  # tool_call_details is what Metis sent
-                        function_name = tool_call_details.get('name')
-                        function_args_str = tool_call_details.get('args', '{}')
-                        tool_call_id_from_metis = tool_call_details.get("id")  # Metis provides this
-
-                        try:
-                            function_args = json.loads(function_args_str) if isinstance(function_args_str,
-                                                                                        str) else function_args_str
-                        except json.JSONDecodeError:
-                            logger.error(f"Failed to parse tool arguments for {function_name}: {function_args_str}")
-                            function_args = {}
-
-                        tool_execution_result_obj = self._call_tool_function(user, function_name, function_args)
-
-                        # Add tool execution result to chat history
-                        chat_history_list.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call_id_from_metis,
-                            "name": function_name,
-                            "content": json.dumps(tool_execution_result_obj, ensure_ascii=False),
-                            # Store full result object as JSON string
-                            "timestamp": str(timezone.now())
-                        })
-
-                        # Prepare the output for Metis API
-                        tool_outputs_for_metis_api.append({
-                            "tool_call_id": tool_call_id_from_metis,
-                            "tool_name": function_name,
-                            "output": tool_execution_result_obj  # Send the rich Python object as output
-                        })
-
-                    logger.debug(
-                        f"Sending tool outputs back to Metis AI for user {user.phone_number}: {json.dumps(tool_outputs_for_metis_api, ensure_ascii=False, indent=2)}")
-
-                    # Send tool execution results back to Metis
-                    final_metis_response_after_tools = metis_service.send_message(
-                        session_id=current_session_instance.metis_session_id,
-                        message_content=tool_outputs_for_metis_api,  # Send the list of dicts
-                        message_type="TOOL"
-                    )
-                    logger.debug(
-                        f"Metis AI raw message response (after tools) for user {user.phone_number}: {json.dumps(final_metis_response_after_tools, ensure_ascii=False, indent=2)}")
-
-                    # Metis should now respond with the final text based on tool outputs
-                    ai_final_text_response = final_metis_response_after_tools.get('content',
-                                                                                  'پاسخی از AI پس از اجرای ابزار دریافت نشد.')
-
-                elif not ai_final_text_response and assistant_entry_for_history["content"] is None and not \
-                assistant_entry_for_history["tool_calls"]:
-                    # If assistant_entry was prepared but had no content and no tool calls from the first AI response
-                    ai_final_text_response = metis_message_response.get('content',
-                                                                        'پاسخ مستقیمی از AI دریافت نشد و ابزاری هم فراخوانی نشد.')
-
-
-            else:  # No 'actions' field, direct response from Metis
-                ai_final_text_response = metis_message_response.get('content', 'پاسخی از AI دریافت نشد.')
-
-            if not ai_final_text_response:  # Fallback if still no text response
-                ai_final_text_response = "محتوای معتبری از AI دریافت نشد."
-
-            # Add final AI text response to history
-            chat_history_list.append(
-                {"role": "assistant", "content": ai_final_text_response, "timestamp": str(timezone.now())})
-
-            current_session_instance.chat_history = json.dumps(chat_history_list, ensure_ascii=False)
-            current_session_instance.updated_at = timezone.now()
-            current_session_instance.save(update_fields=['chat_history', 'updated_at'])
-
-            self._increment_message_count(user_profile)
-
-            return Response({
-                'ai_response': ai_final_text_response,
-                'session_id': current_session_instance.ai_session_id,
-                'chat_history': chat_history_list
-            }, status=status.HTTP_200_OK)
-
-        except ConnectionError as e:
-            logger.exception(f"Connection error during Metis AI interaction for user {user.phone_number}: {e}")
-            return Response({'detail': f'خطا در ارتباط با سرویس AI: {e}'},
-                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        except Exception as e:
-            logger.exception(f"An unexpected error occurred during AI interaction for user {user.phone_number}: {e}")
-            return Response({'detail': f'خطای پیش‌بینی نشده در طول تعامل با AI: {e}'},
-                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-# users_ai/views.py
 from rest_framework.permissions import BasePermission
 
 class IsOwnerOrAdmin(BasePermission):
@@ -699,9 +565,22 @@ class PsychTestHistoryView(generics.ListAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.is_superuser:
-            return AiResponse.objects.filter(ai_response_name="Psychological Test")
-        return AiResponse.objects.filter(user=user, ai_response_name="Psychological Test")
+            return AiResponse.objects.filter(ai_response_name="Psychological Test").select_related('user__profile')
+        return AiResponse.objects.filter(user=user, ai_response_name="Psychological Test").select_related('user__profile')
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        response_data = []
+        for session in serializer.data:
+            user_profile = UserProfile.objects.get(user__id=session['user'])
+            psych_test = json.loads(user_profile.ai_psychological_test) if user_profile.ai_psychological_test else {}
+            response_data.append({
+                'session': session,
+                'personality_type': psych_test.get('personality_type', None)
+            })
+        return Response(response_data)
+from rest_framework.exceptions import PermissionDenied
 class AiChatSessionListCreate(generics.ListCreateAPIView):
     queryset = AiResponse.objects.all()
     serializer_class = AiResponseSerializer
