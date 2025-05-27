@@ -628,12 +628,3 @@ class AiChatSessionDetail(generics.RetrieveUpdateDestroyAPIView):
         instance.delete()
         logger.info(f"Local AiResponse session {instance.ai_session_id} deleted for user {self.request.user.phone_number}.")
 
-
-
-
-class TestTimeView(APIView):
-    permission_classes = [permissions.AllowAny] # برای تست راحت‌تر، فعلا بدون احراز هویت
-    def get(self, request, *args, **kwargs):
-        now = datetime.datetime.now().isoformat()
-        logger.info(f"TestTimeView (test-tool-status-minimal) called. Returning current time: {now}")
-        return Response({"currentTime": now, "status": "ok", "message": "Test endpoint is working"})
