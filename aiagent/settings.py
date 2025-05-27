@@ -213,4 +213,5 @@ LOGGING = {
 }
 
 
+METIS_CALLBACK_SECRET_TOKEN = config('METIS_CALLBACK_SECRET_TOKEN', default=None)
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
