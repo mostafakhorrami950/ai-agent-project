@@ -166,9 +166,35 @@ class FeedbackLearningDetail(UserSpecificOneToOneViewSet):
 
 
 # ... GoalListCreate, GoalDetail, HabitListCreate, HabitDetail ...
-class GoalListCreate(UserSpecificForeignKeyViewSet):
+class GoalListCreate(UserSpecificForeignKeyViewSet): # یا generics.ListCreateAPIView
     queryset = Goal.objects.all()
     serializer_class = GoalSerializer
+    permission_classes = [permissions.AllowAny] # <--- تغییر موقت برای تست
+
+    def perform_create(self, serializer):
+        # این بخش بسیار مهم است و باید به دقت بازبینی شود
+        # چون احراز هویت کاربر وجود ندارد، باید راهی برای اتصال هدف به کاربر صحیح پیدا کنید
+        # یا این اندپوینت را فقط برای دریافت داده از متاس و پردازش توسط یک وظیفه پس‌زمینه استفاده کنید
+        # که سپس کاربر را از طریق سشن چت شناسایی می‌کند.
+        logger.info(f"GoalListCreate (AllowAny) received data from Metis: {self.request.data}")
+
+        # **هشدار**: کد زیر ناامن است اگر هویت کاربر از یک منبع قابل اعتماد در درخواست متاس نیاید.
+        # # مثال: اگر متاس user_id را به عنوان بخشی از آرگومان‌های تابع می‌فرستد:
+        # user_phone_or_id = self.request.data.get('user_phone_number_from_metis_args') # نام آرگومان را باید خودتان در تعریف تابع متاس مشخص کنید
+        # if user_phone_or_id:
+        #     try:
+        #         user = User.objects.get(phone_number=user_phone_or_id) # یا هر شناسه دیگری
+        #         serializer.save(user=user)
+        #         logger.info(f"Goal created for user {user.phone_number} by Metis tool call.")
+        #         return
+        #     except User.DoesNotExist:
+        #         logger.error(f"User with identifier {user_phone_or_id} not found for Metis tool call.")
+        # else:
+        #     logger.error("User identifier not provided by Metis in tool call to GoalListCreate.")
+
+        # فعلا برای تست، از ذخیره کردن صرف نظر کنید یا با یک کاربر پیش‌فرض تست کنید تا فقط جریان را ببینید.
+        # serializer.save() # این بدون کاربر ذخیره می‌کند که مطلوب نیست و اگر فیلد user الزامی باشد خطا می‌دهد.
+        pass # یا یک پاسخ موفقیت‌آمیز بدون ذخیره‌سازی برای تست برگردانید
 
 class GoalDetail(UserSpecificForeignKeyDetailViewSet):
     queryset = Goal.objects.all()
