@@ -1,3 +1,4 @@
+# models.py
 # users_ai/models.py
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
@@ -246,7 +247,7 @@ class AiResponse(models.Model):
     ai_session_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
     metis_session_id = models.CharField(max_length=255, null=True, blank=True)
     ai_response_name = models.CharField(max_length=255, default="New AI Chat Session")
-    chat_history = models.TextField(blank=True, null=True)
+    chat_history = models.TextField(blank=True, null=True) # Store as JSON string
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     expires_at = models.DateTimeField(null=True, blank=True)
@@ -254,13 +255,13 @@ class AiResponse(models.Model):
 
 
     def save(self, *args, **kwargs):
-        if not self.expires_at and self.user and hasattr(self.user, 'profile') and self.user.profile.role: # اضافه کردن بررسی hasattr
+        if not self.expires_at and self.user and hasattr(self.user, 'profile') and self.user.profile and self.user.profile.role: # اضافه کردن بررسی hasattr
             duration = self.user.profile.role.session_duration_hours
             self.expires_at = timezone.now() + timezone.timedelta(hours=duration)
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"AI Chat for {self.user.phone_number} - {self.ai_response_name} (Session ID: {self.ai_session_id})"
+        return f"AI Chat for {self.user.phone_number} - {self.ai_response_name} (Metis Session ID: {self.metis_session_id})"
 
     class Meta:
         ordering = ['-created_at']

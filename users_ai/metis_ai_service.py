@@ -1,3 +1,4 @@
+# metis_ai_service.py
 import requests
 from django.conf import settings
 import logging
@@ -8,11 +9,11 @@ logger = logging.getLogger(__name__)
 
 class MetisAIService:
     def __init__(self):
-        self.base_url = "https://api.metisai.ir/api/v1"  # Base URL برای هر دو API Bot و Session
+        self.base_url = "https://api.metisai.ir/api/v1"
         self.api_key = settings.METIS_API_KEY
-        self.bot_id = settings.METIS_BOT_ID  # Bot ID برای استفاده در API Session
+        self.bot_id = settings.METIS_BOT_ID
         self.headers = {
-            "Authorization": f"Bearer {self.api_key}",  # هدر احراز هویت
+            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
 
@@ -33,25 +34,32 @@ class MetisAIService:
                 logger.debug(f"[_make_request] Request Params: {params}")
 
             response = requests.request(method, url, headers=self.headers, json=json_data, params=params, timeout=60)
-            response.raise_for_status()  # برای نمایش خطاها اگر وضعیت 4xx یا 5xx بود
+            response.raise_for_status()
             logger.debug(f"[_make_request] Response Status: {response.status_code}")
-            logger.debug(f"[_make_request] Response Body: {response.text}")
-            return response.json()
+            # Avoid logging potentially large response body by default, or log snippet
+            # logger.debug(f"[_make_request] Response Body: {response.text}")
+            try:
+                response_json = response.json()
+                logger.debug(
+                    f"[_make_request] Response JSON Body: {json.dumps(response_json, indent=2, ensure_ascii=False)}")
+                return response_json
+            except json.JSONDecodeError as e:
+                logger.error(
+                    f"[_make_request] JSON Decode Error: {e}, Response content: {response.text if 'response' in locals() else 'N/A'}")
+                raise ValueError(f"Invalid JSON response from Metis AI: {e}")
+
+        except requests.exceptions.HTTPError as e:
+            logger.error(
+                f"[_make_request] HTTP Error: {e.response.status_code} for url: {e.request.url}, Response: {getattr(e.response, 'text', 'No response text')}")
+            raise ConnectionError(
+                f"Metis AI API Error ({e.response.status_code}): {getattr(e.response, 'text', 'No response text')}")
         except requests.exceptions.RequestException as e:
             logger.error(
-                f"[_make_request] HTTP/Network Error: {e.response.status_code if e.response else 'N/A'} for url: {e.request.url if e.request else 'N/A'}, Response: {getattr(e.response, 'text', 'No response text')}")
+                f"[_make_request] Network/Request Error: {e} for url: {e.request.url if e.request else 'N/A'}")
             raise ConnectionError(f"Failed to connect to Metis AI: {e}")
-        except json.JSONDecodeError as e:
-            logger.error(
-                f"[_make_request] JSON Decode Error: {e}, Response content: {response.text if 'response' in locals() else 'N/A'}")
-            raise ValueError(f"Invalid JSON response from Metis AI: {e}")
         except Exception as e:
             logger.error(f"[_make_request] An unexpected error occurred: {e}", exc_info=True)
             raise
-
-    # --------------------------------------------------------------------------------
-    # توابع API Bot (از Metis_Documentation.postman_collection و ربات _ متیس.html)
-    # --------------------------------------------------------------------------------
 
     def create_bot(self, name, enabled, provider_config, instructions=None, functions=None, corpus_ids=None):
         endpoint = "bots"
@@ -67,10 +75,6 @@ class MetisAIService:
 
     def update_bot(self, bot_id, name, enabled, provider_config, instructions=None, functions=None, corpus_ids=None,
                    description=None, avatar=None):
-        """
-        Updates an existing bot with new configuration including functions.
-        (Based on POSTMAN collection and ربات _ متیس.html)
-        """
         endpoint = f"bots/{bot_id}"
         data = {
             "name": name,
@@ -84,7 +88,6 @@ class MetisAIService:
             data["description"] = description
         if avatar is not None:
             data["avatar"] = avatar
-
         logger.debug(f"[update_bot] Data to send: {json.dumps(data, indent=2, ensure_ascii=False)}")
         return self._make_request("PUT", endpoint, json_data=data)
 
@@ -100,10 +103,6 @@ class MetisAIService:
         endpoint = f"bots/{bot_id}"
         return self._make_request("DELETE", endpoint)
 
-    # --------------------------------------------------------------------------------
-    # توابع API Session (از Metis_Documentation.postman_collection و message _ متیس.html)
-    # --------------------------------------------------------------------------------
-
     def create_chat_session(self, bot_id, user_data=None, initial_messages=None):
         endpoint = "chat/session"
         data = {
@@ -114,25 +113,24 @@ class MetisAIService:
         logger.debug(f"[create_chat_session] Data: {json.dumps(data, indent=2, ensure_ascii=False)}")
         return self._make_request("POST", endpoint, json_data=data)
 
-    def send_message(self, session_id, message_content, message_type="USER", tool_outputs=None):
+    def send_message(self, session_id, message_content, message_type="USER"):
         endpoint = f"chat/session/{session_id}/message"
-        message_data = {
-            "type": message_type,
-            "content": message_content
-        }
 
-        # اگر خروجی ابزار وجود دارد، آن را به عنوان part از پیام ارسال کنید (طبق مستندات Metis)
-        # Metis Function Doc: "message": {"type": "TOOL", "tool_results": [{"tool_name": "tool", "output": "..."}]}
-        # Postman Collection: "message": {"type": "USER", "content": "..."}
-        # اگر content یک JSON string از tool_outputs است، نوع آن را TOOL بگذارید.
         if message_type == "TOOL":
+            # message_content should be a Python list of tool_result dictionaries
+            # e.g., [{"tool_call_id": "...", "tool_name": "...", "output": {...}}]
             message_data = {
                 "type": "TOOL",
-                "tool_results": json.loads(message_content)
+                "tool_results": message_content  # Directly use the Python list of dicts
+            }
+        else:  # USER, SYSTEM, ASSISTANT
+            message_data = {
+                "type": message_type,
+                "content": message_content
             }
 
         data = {"message": message_data}
-        logger.debug(f"[send_message] Data: {json.dumps(data, indent=2, ensure_ascii=False)}")
+        logger.debug(f"[send_message] Data to send to Metis: {json.dumps(data, indent=2, ensure_ascii=False)}")
         return self._make_request("POST", endpoint, json_data=data)
 
     def delete_chat_session(self, session_id):
@@ -154,21 +152,14 @@ class MetisAIService:
         params = {"botId": bot_id, "page": page, "size": size}
         return self._make_request("GET", endpoint, params=params)
 
-    # --------------------------------------------------------------------------------
-    # تعریف TOOL SCHEMAS برای ارسال به BOT API (از Function _ متیس.html)
-    # --------------------------------------------------------------------------------
-
     @staticmethod
     def get_tool_schemas_for_metis_bot():
-        """
-        Returns a list of tool definitions in Metis AI's 'Function' format for sending to Bot API.
-        This schema is used when creating/updating a Bot in Metis AI.
-        """
-        # Base URL برای API جنگوی شما (برای فراخوانی از سمت Metis AI)
-        # این URL باید در صورت استقرار پروژه، به آدرس واقعی API شما تغییر کند.
-        # مثلاً "https://your-django-api.com/api"
-        # در محیط پروداکشن، این باید به آدرس عمومی API شما اشاره کند.
-        django_api_base_url = "https://api.mobixtube.ir/api"  # این باید در محیط پروداکشن تغییر کند!
+        # Read from Django settings if available, otherwise use default.
+        # User should define DJANGO_API_BASE_URL in their settings.py for production.
+        django_api_base_url = getattr(settings, 'DJANGO_API_BASE_URL', "https://api.mobixtube.ir/api")
+        if django_api_base_url == "https://api.mobixtube.ir/api":
+            logger.warning(
+                "Using default DJANGO_API_BASE_URL. Ensure this is configured in settings.py for production.")
 
         def create_arg(name, description, arg_type, required, enum_values=None):
             arg = {"name": name, "description": description, "type": arg_type, "required": required}
@@ -177,8 +168,6 @@ class MetisAIService:
             return arg
 
         tools = []
-
-        # Tool for Goal model (users_ai_goal)
         tools.append({
             "name": "create_goal",
             "description": "اهداف کاربر را ثبت یا ویرایش می کند. برای ثبت یک هدف جدید یا بروزرسانی هدف موجود استفاده می شود.",
@@ -188,15 +177,13 @@ class MetisAIService:
                 create_arg("goal_type", "نوع هدف (مثلاً شخصی، حرفه‌ای، مالی، سلامتی).", "STRING", True),
                 create_arg("description", "توضیح کامل هدف کاربر (مثلاً یادگیری زبان جدید).", "STRING", True),
                 create_arg("priority", "اولویت هدف (از 1 تا 5، 5 بالاترین اولویت).", "INTEGER", False),
-                create_arg("deadline", "تاریخ مهلت دستیابی به هدف در قالبولندا-MM-DD.", "STRING", False),
+                create_arg("deadline", "تاریخ مهلت دستیابی به هدف در قالب YYYY-MM-DD.", "STRING", False),
                 create_arg("progress", "درصد پیشرفت فعلی هدف (از 0.0 تا 100.0).", "NUMBER", False),
             ],
         })
-
-        # Tool for HealthRecord (users_ai_healthrecord)
         tools.append({
             "name": "update_health_record",
-            "description": "سوابق سلامتی جسمانی و روانی کاربر را بروزرسانی یا ثبت می کند. برای اضافه کردن یا تغییر اطلاعات پزشکی کاربر استفاده می شود.",
+            "description": "سوابق سلامتی جسمانی و روانی کاربر را بروزرسانی یا ثبت می کند.",
             "url": f"{django_api_base_url}/health-record/",
             "method": "PATCH",
             "args": [
@@ -215,10 +202,9 @@ class MetisAIService:
                            False),
                 create_arg("sleep_hours", "میانگین ساعات خواب روزانه (مثلاً 7.5).", "NUMBER", False),
                 create_arg("medications", "داروهای در حال مصرف و دوز آن‌ها.", "STRING", False),
-                create_arg("last_checkup_date", "تاریخ آخرین معاینه پزشکی در قالبولندا-MM-DD.", "STRING", False),
+                create_arg("last_checkup_date", "تاریخ آخرین معاینه پزشکی در قالب YYYY-MM-DD.", "STRING", False),
             ]
         })
-
         tools.append({
             "name": "update_psychological_profile",
             "description": "پروفایل روانشناختی و ویژگی‌های شخصیتی کاربر را بروزرسانی یا ثبت می کند.",
@@ -238,7 +224,6 @@ class MetisAIService:
                            ["کم", "متوسط", "زیاد"]),
             ]
         })
-
         tools.append({
             "name": "update_career_education",
             "description": "اطلاعات مسیر تحصیلی و حرفه‌ای کاربر را بروزرسانی یا ثبت می کند.",
@@ -258,7 +243,6 @@ class MetisAIService:
                 create_arg("certifications", "گواهینامه‌های حرفه‌ای.", "STRING", False),
             ]
         })
-
         tools.append({
             "name": "update_financial_info",
             "description": "داده‌های مالی کاربر را بروزرسانی یا ثبت می کند.",
@@ -276,7 +260,6 @@ class MetisAIService:
                 create_arg("budgeting_habits", "عادات بودجه‌بندی (مثلاً پس‌انداز ماهانه).", "STRING", False),
             ]
         })
-
         tools.append({
             "name": "update_social_relationship",
             "description": "اطلاعات شبکه اجتماعی و تعاملات کاربر را بروزرسانی یا ثبت می کند.",
@@ -293,7 +276,6 @@ class MetisAIService:
                 create_arg("conflict_resolution", "روش‌های حل تعارض در روابط.", "STRING", False),
             ]
         })
-
         tools.append({
             "name": "update_preference_interest",
             "description": "ترجیحات و علایق کاربر را بروزرسانی یا ثبت می کند.",
@@ -310,7 +292,6 @@ class MetisAIService:
                 create_arg("movie_fav_choices", "فیلم‌های مورد علاقه کاربر.", "STRING", False),
             ]
         })
-
         tools.append({
             "name": "update_environmental_context",
             "description": "اطلاعات محیطی و زمینه‌ای کاربر را بروزرسانی یا ثبت می کند.",
@@ -328,7 +309,6 @@ class MetisAIService:
                            False),
             ]
         })
-
         tools.append({
             "name": "update_real_time_data",
             "description": "داده‌های لحظه‌ای کاربر را بروزرسانی یا ثبت می کند.",
@@ -343,7 +323,6 @@ class MetisAIService:
                 create_arg("heart_rate", "ضربان قلب کاربر.", "INTEGER", False),
             ]
         })
-
         tools.append({
             "name": "update_feedback_learning",
             "description": "بازخوردهای کاربر و داده‌های یادگیری AI را بروزرسانی یا ثبت می کند.",
@@ -356,7 +335,6 @@ class MetisAIService:
                 create_arg("interaction_frequency", "تعداد تعاملات در بازه زمانی.", "INTEGER", False),
             ]
         })
-
         tools.append({
             "name": "update_user_profile_details",
             "description": "جزئیات اضافی پروفایل کاربر را بروزرسانی یا ثبت می کند.",
@@ -369,6 +347,5 @@ class MetisAIService:
                            False),
             ]
         })
-
         logger.debug(f"Defined {len(tools)} tools for Metis Bot API.")
         return tools

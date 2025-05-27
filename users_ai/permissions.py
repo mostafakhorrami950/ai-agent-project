@@ -1,3 +1,4 @@
+# permissions.py
 # users_ai/permissions.py
 from rest_framework.permissions import BasePermission
 from django.conf import settings
