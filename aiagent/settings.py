@@ -77,6 +77,7 @@ INSTALLED_APPS = [
     'users_ai', # اپلیکیشن شما
     'rest_framework_simplejwt',
     # 'corsheaders', # اگر از django-cors-headers استفاده می‌کنید، باید اینجا اضافه شود و در MIDDLEWARE هم
+    'django_extensions',
 ]
 
 REST_FRAMEWORK = {
