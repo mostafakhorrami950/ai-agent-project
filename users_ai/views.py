@@ -10,8 +10,10 @@ from django.utils import timezone
 import uuid
 import json
 import logging
-# import datetime # این ایمپورت در فایل شما بود، اگر لازم نیست می‌توانید حذف کنید
+from rest_framework import permissions
+import datetime # این ایمپورت در فایل شما بود، اگر لازم نیست می‌توانید حذف کنید
 # import requests # این ایمپورت در فایل شما بود، اگر لازم نیست می‌توانید حذف کنید
+from django.http import JsonResponse
 
 # Import your models
 from .models import (
@@ -626,12 +628,12 @@ class AiChatSessionDetail(generics.RetrieveUpdateDestroyAPIView):
         instance.delete()
         logger.info(f"Local AiResponse session {instance.ai_session_id} deleted for user {self.request.user.phone_number}.")
 
-from django.http import JsonResponse
-import datetime
+
+
 
 class TestTimeView(APIView):
     permission_classes = [permissions.AllowAny] # برای تست راحت‌تر، فعلا بدون احراز هویت
     def get(self, request, *args, **kwargs):
         now = datetime.datetime.now().isoformat()
-        logger.info(f"TestTimeView called. Returning current time: {now}")
-        return Response({"currentTime": now, "status": "ok"})
+        logger.info(f"TestTimeView (test-tool-status-minimal) called. Returning current time: {now}")
+        return Response({"currentTime": now, "status": "ok", "message": "Test endpoint is working"})

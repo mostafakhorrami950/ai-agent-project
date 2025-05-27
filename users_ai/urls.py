@@ -33,5 +33,5 @@ urlpatterns = [
     path('ai-agent/chat/', AIAgentChatView.as_view(), name='ai-agent-chat'),  # مسیر چت AI
     path('ai-sessions/', AiChatSessionListCreate.as_view(), name='ai-sessions'),
     path('ai-sessions/<int:pk>/', AiChatSessionDetail.as_view(), name='ai-session-detail'),
-path('test-time/', TestTimeView.as_view(), name='test-time'),
+path('test-tool-status-minimal/', TestTimeView.as_view(), name='test-tool-status-minimal'),
 ]
