@@ -452,6 +452,42 @@ class AIAgentChatView(APIView):
         user_profile = get_object_or_404(UserProfile, user=user)
         user_message_content = request.data.get('message')
         session_id_from_request = request.data.get('session_id')
+        is_psych_test = request.data.get('is_psych_test', False)
+        if is_psych_test:
+            message_limit = user_profile.role.psych_test_message_limit
+            duration_hours = user_profile.role.psych_test_duration_hours
+            session_name = "Psychological Test"
+            psych_sessions = active_sessions.filter(ai_response_name=session_name)
+            if psych_sessions.exists():
+                session = psych_sessions.first()
+                chat_history = json.loads(session.chat_history) if session.chat_history else []
+                if len([m for m in chat_history if m['role'] == 'user']) >= message_limit:
+                    return Response({'detail': 'محدودیت پیام تست روان‌شناسی.'}, status=429)
+            else:
+                internal_session_id = str(uuid.uuid4())
+                prompt = "تست MBTI: سوالات پویا برای تعیین تیپ شخصیتی بپرس و تحلیل کن."
+                metis_response = metis_service.create_chat_session(
+                    bot_id=metis_service.bot_id,
+                    user_data=self._get_user_info_for_metis_api(user_profile),
+                    initial_messages=[{"type": "SYSTEM", "content": prompt}]
+                )
+                session = AiResponse.objects.create(
+                    user=user,
+                    ai_session_id=internal_session_id,
+                    metis_session_id=metis_response.get("id"),
+                    ai_response_name=session_name,
+                    chat_history="[]",
+                    expires_at=timezone.now() + timezone.timedelta(hours=duration_hours)
+                )
+
+        if is_psych_test and 'personality_type' in metis_message_response:
+            user_profile.ai_psychological_test = json.dumps({
+                "responses": chat_history_list,
+                "personality_type": metis_message_response['personality_type']
+            }, ensure_ascii=False)
+            user_profile.save()
+            session.is_active = False
+            session.save()
 
         if not user_message_content:
             logger.warning("Message content is missing in request.")
@@ -649,6 +685,22 @@ class AIAgentChatView(APIView):
             return Response({'detail': f'خطای پیش‌بینی نشده در طول تعامل با AI: {e}'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+# users_ai/views.py
+from rest_framework.permissions import BasePermission
+
+class IsOwnerOrAdmin(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and (request.user.is_superuser or view.get_queryset().filter(user=request.user).exists())
+
+class PsychTestHistoryView(generics.ListAPIView):
+    serializer_class = AiResponseSerializer
+    permission_classes = [IsOwnerOrAdmin]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return AiResponse.objects.filter(ai_response_name="Psychological Test")
+        return AiResponse.objects.filter(user=user, ai_response_name="Psychological Test")
 
 class AiChatSessionListCreate(generics.ListCreateAPIView):
     queryset = AiResponse.objects.all()

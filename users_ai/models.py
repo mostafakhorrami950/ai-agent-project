@@ -56,7 +56,8 @@ class UserRole(models.Model):
     max_active_sessions = models.IntegerField(default=1) # حداکثر تعداد گفتگوهای همزمان
     session_duration_hours = models.IntegerField(default=24) # مدت زمان فعال بودن هر گفتگو (ساعت)
     daily_message_limit = models.IntegerField(default=50) # محدودیت پیام روزانه (اگر لازم باشد)
-
+    psych_test_message_limit = models.IntegerField(default=20)
+    psych_test_duration_hours = models.IntegerField(default=1)
     def __str__(self):
         return self.name
 

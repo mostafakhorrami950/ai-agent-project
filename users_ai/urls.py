@@ -10,7 +10,7 @@ from .views import (
     PreferenceInterestDetail, EnvironmentalContextDetail, RealTimeDataDetail,
     FeedbackLearningDetail,
     GoalListCreate, GoalDetail, HabitListCreate, HabitDetail,
-    AIAgentChatView, AiChatSessionListCreate, AiChatSessionDetail,TestTimeView
+    AIAgentChatView, AiChatSessionListCreate, AiChatSessionDetail,TestTimeView,PsychTestHistoryView
 )
 
 urlpatterns = [
@@ -34,4 +34,5 @@ urlpatterns = [
     path('ai-sessions/', AiChatSessionListCreate.as_view(), name='ai-sessions'),
     path('ai-sessions/<int:pk>/', AiChatSessionDetail.as_view(), name='ai-session-detail'),
     path('test-tool-status-minimal/', TestTimeView.as_view(), name='test-tool-status-minimal'),
+    path('psych-test/history/', PsychTestHistoryView.as_view(), name='psych-test-history'),
 ]
