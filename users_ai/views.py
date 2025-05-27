@@ -12,7 +12,6 @@ import json
 import logging
 import datetime  # این ایمپورت در فایل شما بود، اگر لازم نیست می‌توانید حذف کنید
 # import requests # این ایمپورت در فایل شما بود، اگر لازم نیست می‌توانید حذف کنید
-from rest_framework.exceptions import PermissionDenied  # Added for AiChatSessionListCreate
 
 # Import your models
 from .models import (
@@ -77,7 +76,16 @@ class UserSpecificOneToOneViewSet(generics.RetrieveUpdateDestroyAPIView):
     def get_object(self):
         if not hasattr(self, 'queryset'):
             raise AttributeError("queryset attribute must be set on the child class.")
+        # For OneToOne fields, we can try to get_or_create the object if we want PUT to also create.
+        # However, DRF's RetrieveUpdateDestroyAPIView expects the object to exist for GET/PUT/PATCH/DELETE.
+        # If we want PUT/PATCH to create if not exists, we might need to override respective methods.
+        # For now, assuming standard behavior: it must exist.
+        # The _tool_... methods in AIAgentChatView handle get_or_create.
         return get_object_or_404(self.queryset, user=self.request.user)
+
+    # perform_create is not typically used in RetrieveUpdateDestroyAPIView
+    # def perform_create(self, serializer):
+    #     serializer.save(user=self.request.user)
 
 
 class UserSpecificForeignKeyViewSet(generics.ListCreateAPIView):
@@ -196,6 +204,7 @@ class AIAgentChatView(APIView):
         if user_profile.last_message_date != now:
             user_profile.messages_sent_today = 0
             user_profile.last_message_date = now
+            # Save handled by _increment_message_count
 
         if user_profile.messages_sent_today >= user_profile.role.daily_message_limit:
             logger.warning(
@@ -205,7 +214,7 @@ class AIAgentChatView(APIView):
 
     def _increment_message_count(self, user_profile):
         now = timezone.localdate()
-        if user_profile.last_message_date != now:
+        if user_profile.last_message_date != now:  # Ensure date is current before incrementing
             user_profile.messages_sent_today = 0
             user_profile.last_message_date = now
         user_profile.messages_sent_today += 1
@@ -237,51 +246,42 @@ class AIAgentChatView(APIView):
             if health_data: user_info["health_info"] = health_data
         except HealthRecord.DoesNotExist:
             pass
+        # Add similar try-except blocks for other related models if needed for user_info
         return user_info
 
     def _get_user_context_for_ai(self, user_profile):
+        # This method aggregates various pieces of user information into a system prompt.
+        # You can customize this extensively.
         context_parts = ["اطلاعات کاربر به شرح زیر است:"]
         context_parts.append(f"- شناسه کاربر: {user_profile.user.id}, شماره موبایل: {user_profile.user.phone_number}")
         if user_profile.first_name: context_parts.append(f"- نام: {user_profile.first_name}")
         if user_profile.last_name: context_parts.append(f"- نام خانوادگی: {user_profile.last_name}")
+        # ... (add more fields from UserProfile)
 
-        # Add more fields from UserProfile as needed
-        if user_profile.age: context_parts.append(f"- سن: {user_profile.age}")
-        if user_profile.gender: context_parts.append(f"- جنسیت: {user_profile.gender}")
-        if user_profile.location: context_parts.append(f"- مکان: {user_profile.location}")
-
+        # Example for HealthRecord
         try:
             hr = user_profile.user.health_record
             context_parts.append("\nسوابق سلامتی:")
             if hr.medical_history: context_parts.append(f"- تاریخچه پزشکی: {hr.medical_history}")
-            if hr.chronic_conditions: context_parts.append(f"- بیماری‌های مزمن: {hr.chronic_conditions}")
-            # Add more fields from HealthRecord
+            # ... (add more fields from HealthRecord)
         except HealthRecord.DoesNotExist:
             context_parts.append("- سوابق سلامتی ثبت نشده است.")
 
-        try:
-            pp = user_profile.user.psych_profile
-            context_parts.append("\nپروفایل روانشناختی:")
-            if pp.personality_type: context_parts.append(f"- تیپ شخصیتی: {pp.personality_type}")
-            # Add more fields from PsychologicalProfile
-        except PsychologicalProfile.DoesNotExist:
-            context_parts.append("- پروفایل روانشناختی ثبت نشده است.")
-
-        # Add other models similarly
-        # ...
+        # Add other models similarly (PsychologicalProfile, CareerEducation, etc.)
 
         if user_profile.user_information_summary:
             context_parts.append(f"\nخلاصه جامع کاربر:\n{user_profile.user_information_summary}")
 
         full_context = "\n".join(context_parts)
-        logger.debug(f"Generated AI context for user {user_profile.user.phone_number}: {full_context[:500]}...")
+        logger.debug(
+            f"Generated AI context for user {user_profile.user.phone_number}: {full_context[:500]}...")  # Log snippet
         return full_context
 
     def _call_tool_function(self, user, tool_name, tool_args):
         logger.info(f"User {user.phone_number} calling tool: {tool_name} with args: {tool_args}")
         try:
             if tool_name == "create_goal":
-                return self._tool_create_goal(user, **tool_args)  # MODIFIED FOR TESTING
+                return self._tool_create_goal(user, **tool_args)
             elif tool_name == "update_health_record":
                 return self._tool_update_health_record(user, **tool_args)
             elif tool_name == "update_psychological_profile":
@@ -309,47 +309,17 @@ class AIAgentChatView(APIView):
             logger.exception(f"Error executing tool {tool_name} for user {user.phone_number}: {e}")
             return {"status": "error", "message": f"خطا در اجرای تابع ابزار {tool_name}: {str(e)}"}
 
-    # MODIFIED FOR TESTING - No database write
     def _tool_create_goal(self, user, **kwargs):
-        logger.info(f"[TEST MODE] _tool_create_goal called for user {user.phone_number} with args: {kwargs}")
-
-        description = kwargs.get("description")
-        goal_type = kwargs.get("goal_type")
-
-        # You can add more checks here based on what arguments you expect the AI to send
-        if not description:  # Example check
-            logger.warning(
-                f"[TEST MODE] _tool_create_goal for user {user.phone_number}: Missing 'description' in args: {kwargs}")
-            return {
-                "status": "test_error",
-                "message": "در حالت تست: آرگومان 'description' برای ابزار create_goal ارائه نشده است.",
-                "received_args": kwargs
-            }
-        if not goal_type:  # Example check for another required arg by schema
-            logger.warning(
-                f"[TEST MODE] _tool_create_goal for user {user.phone_number}: Missing 'goal_type' in args: {kwargs}")
-            return {
-                "status": "test_error",
-                "message": "در حالت تست: آرگومان 'goal_type' برای ابزار create_goal ارائه نشده است.",
-                "received_args": kwargs
-            }
-
-        # Simulate successful processing and echo back received arguments
-        simulated_data = {
-            "user_phone": user.phone_number,  # Changed from user.id for better readability in test
-            "received_args": kwargs,
-            "note": "This is a simulated success from test mode. No data was saved to the database."
-        }
-        logger.info(
-            f"[TEST MODE] _tool_create_goal for user {user.phone_number}: Simulated success with data: {simulated_data}")
-        return {
-            "status": "test_success",
-            "message": "ابزار create_goal در حالت تست با موفقیت فراخوانی شد و آرگومان‌ها دریافت شدند. اطلاعاتی در دیتابیس ذخیره نشد.",
-            "data": simulated_data
-        }
-
-    # END OF MODIFIED FUNCTION
-    # Remember to revert this function to its original database-saving version after testing.
+        serializer = GoalSerializer(data=kwargs, context={'request': self.request})
+        if serializer.is_valid():
+            goal = serializer.save(user=user)
+            logger.info(f"Goal created for user {user.phone_number}: {goal.id}")
+            return {"status": "success",
+                    "message": f"هدف با موفقیت برای کاربر {user.phone_number} ذخیره شد.",
+                    "data": serializer.data}
+        else:
+            logger.error(f"Error creating goal for user {user.phone_number}: {serializer.errors}")
+            return {"status": "error", "message": "خطا در ذخیره هدف.", "errors": serializer.errors}
 
     def _tool_update_user_profile_details(self, user, **kwargs):
         profile = get_object_or_404(UserProfile, user=user)
@@ -452,10 +422,10 @@ class AIAgentChatView(APIView):
 
     def _tool_update_real_time_data(self, user, **kwargs):
         record, created = RealTimeData.objects.get_or_create(user=user)
-        kwargs.pop('timestamp', None)
+        kwargs.pop('timestamp', None)  # timestamp is auto_now_add or managed by model
         serializer = RealTimeDataSerializer(record, data=kwargs, partial=True, context={'request': self.request})
         if serializer.is_valid():
-            serializer.save()
+            serializer.save()  # timestamp will be updated if auto_now=True, or use auto_now_add for creation
             logger.info(f"RealTimeData {'created' if created else 'updated'} for user {user.phone_number}.")
             return {"status": "success",
                     "message": f"داده‌های بلادرنگ کاربر {user.phone_number} {'ایجاد' if created else 'به‌روز'} شد.",
@@ -515,7 +485,7 @@ class AIAgentChatView(APIView):
                 internal_session_id = str(uuid.uuid4())
                 user_info_for_metis = self._get_user_info_for_metis_api(user_profile)
                 initial_messages_for_metis = []
-                user_context_prompt = self._get_user_context_for_ai(user_profile)
+                user_context_prompt = self._get_user_context_for_ai(user_profile)  # Get comprehensive context
                 if user_context_prompt:
                     initial_messages_for_metis.append({"type": "SYSTEM", "content": user_context_prompt})
 
@@ -538,7 +508,7 @@ class AIAgentChatView(APIView):
                     ai_session_id=internal_session_id,
                     metis_session_id=metis_session_id,
                     ai_response_name=f"Chat Session {timezone.now().strftime('%Y-%m-%d %H:%M')}",
-                    chat_history="[]"
+                    chat_history="[]"  # Initialize with empty JSON array string
                 )
                 logger.info(
                     f"New internal session {internal_session_id} created for user {user.phone_number} with Metis session {metis_session_id}.")
@@ -556,6 +526,7 @@ class AIAgentChatView(APIView):
             chat_history_list = json.loads(
                 current_session_instance.chat_history) if current_session_instance.chat_history else []
 
+            # Add user message to history (before sending to AI, as it's a confirmed interaction part)
             chat_history_list.append(
                 {"role": "user", "content": user_message_content, "timestamp": str(timezone.now())})
 
@@ -564,14 +535,14 @@ class AIAgentChatView(APIView):
 
             metis_message_response = metis_service.send_message(
                 session_id=current_session_instance.metis_session_id,
-                message_content=user_message_content,
+                message_content=user_message_content,  # Send only the current user message
                 message_type="USER"
             )
             logger.debug(
                 f"Metis AI raw message response (first call) for user {user.phone_number}: {json.dumps(metis_message_response, ensure_ascii=False, indent=2)}")
 
             ai_final_text_response = None
-            tool_calls_from_metis = []
+            tool_calls_from_metis = []  # From Metis 'actions' -> 'function_call'
 
             if metis_message_response and 'actions' in metis_message_response and metis_message_response['actions']:
                 assistant_entry_for_history = {"role": "assistant", "content": None, "tool_calls": [],
@@ -580,23 +551,23 @@ class AIAgentChatView(APIView):
                 for action in metis_message_response['actions']:
                     if action.get('type') == 'FUNCTION_CALL' and action.get('function_call'):
                         tool_calls_from_metis.append(action['function_call'])
+                        # Record the AI's intention to call tools in history
                         assistant_entry_for_history["tool_calls"].append(action['function_call'])
                     elif action.get('type') == 'MESSAGE' and action.get('message') and action.get('message').get(
                             'content'):
+                        # If there's also a direct message content from AI along with potential (or no) tool calls
                         ai_final_text_response = action['message']['content']
                         assistant_entry_for_history["content"] = ai_final_text_response
 
                 if tool_calls_from_metis:
                     logger.info(f"Metis AI requested tool calls for user {user.phone_number}: {tool_calls_from_metis}")
-                    if assistant_entry_for_history["content"] or assistant_entry_for_history[
-                        "tool_calls"]:  # only append if there's something to record
-                        chat_history_list.append(assistant_entry_for_history)
+                    chat_history_list.append(assistant_entry_for_history)  # Add AI's turn (tool call request)
 
-                    tool_outputs_for_metis_api = []
-                    for tool_call_details in tool_calls_from_metis:
+                    tool_outputs_for_metis_api = []  # This will be sent to Metis API
+                    for tool_call_details in tool_calls_from_metis:  # tool_call_details is what Metis sent
                         function_name = tool_call_details.get('name')
                         function_args_str = tool_call_details.get('args', '{}')
-                        tool_call_id_from_metis = tool_call_details.get("id")
+                        tool_call_id_from_metis = tool_call_details.get("id")  # Metis provides this
 
                         try:
                             function_args = json.loads(function_args_str) if isinstance(function_args_str,
@@ -607,60 +578,55 @@ class AIAgentChatView(APIView):
 
                         tool_execution_result_obj = self._call_tool_function(user, function_name, function_args)
 
+                        # Add tool execution result to chat history
                         chat_history_list.append({
                             "role": "tool",
                             "tool_call_id": tool_call_id_from_metis,
                             "name": function_name,
                             "content": json.dumps(tool_execution_result_obj, ensure_ascii=False),
+                            # Store full result object as JSON string
                             "timestamp": str(timezone.now())
                         })
 
+                        # Prepare the output for Metis API
                         tool_outputs_for_metis_api.append({
                             "tool_call_id": tool_call_id_from_metis,
                             "tool_name": function_name,
-                            "output": tool_execution_result_obj
+                            "output": tool_execution_result_obj  # Send the rich Python object as output
                         })
 
                     logger.debug(
                         f"Sending tool outputs back to Metis AI for user {user.phone_number}: {json.dumps(tool_outputs_for_metis_api, ensure_ascii=False, indent=2)}")
 
+                    # Send tool execution results back to Metis
                     final_metis_response_after_tools = metis_service.send_message(
                         session_id=current_session_instance.metis_session_id,
-                        message_content=tool_outputs_for_metis_api,
+                        message_content=tool_outputs_for_metis_api,  # Send the list of dicts
                         message_type="TOOL"
                     )
                     logger.debug(
                         f"Metis AI raw message response (after tools) for user {user.phone_number}: {json.dumps(final_metis_response_after_tools, ensure_ascii=False, indent=2)}")
 
+                    # Metis should now respond with the final text based on tool outputs
                     ai_final_text_response = final_metis_response_after_tools.get('content',
                                                                                   'پاسخی از AI پس از اجرای ابزار دریافت نشد.')
 
                 elif not ai_final_text_response and assistant_entry_for_history["content"] is None and not \
                 assistant_entry_for_history["tool_calls"]:
+                    # If assistant_entry was prepared but had no content and no tool calls from the first AI response
                     ai_final_text_response = metis_message_response.get('content',
                                                                         'پاسخ مستقیمی از AI دریافت نشد و ابزاری هم فراخوانی نشد.')
-                elif not tool_calls_from_metis and assistant_entry_for_history[
-                    "content"]:  # No tool calls, but there was direct assistant message
-                    chat_history_list.append(assistant_entry_for_history)
 
 
-            else:
+            else:  # No 'actions' field, direct response from Metis
                 ai_final_text_response = metis_message_response.get('content', 'پاسخی از AI دریافت نشد.')
 
-            if not ai_final_text_response:
+            if not ai_final_text_response:  # Fallback if still no text response
                 ai_final_text_response = "محتوای معتبری از AI دریافت نشد."
 
-            # Append final AI text response to history if it wasn't already part of an assistant_entry that got appended
-            if not tool_calls_from_metis:  # If there were tool_calls, the assistant's final text response is handled above
-                if not (chat_history_list and chat_history_list[-1].get("role") == "assistant" and chat_history_list[
-                    -1].get("content") is not None):
-                    chat_history_list.append(
-                        {"role": "assistant", "content": ai_final_text_response, "timestamp": str(timezone.now())})
-            elif not (chat_history_list and chat_history_list[-1].get("role") == "assistant" and chat_history_list[
-                -1].get("content") == ai_final_text_response):
-                # If there were tool calls, this adds the final AI message after tool execution
-                chat_history_list.append(
-                    {"role": "assistant", "content": ai_final_text_response, "timestamp": str(timezone.now())})
+            # Add final AI text response to history
+            chat_history_list.append(
+                {"role": "assistant", "content": ai_final_text_response, "timestamp": str(timezone.now())})
 
             current_session_instance.chat_history = json.dumps(chat_history_list, ensure_ascii=False)
             current_session_instance.updated_at = timezone.now()
@@ -676,22 +642,10 @@ class AIAgentChatView(APIView):
 
         except ConnectionError as e:
             logger.exception(f"Connection error during Metis AI interaction for user {user.phone_number}: {e}")
-            # Log error to chat history before returning 503
-            error_message_for_history = f"خطای سیستمی: مشکل در ارتباط با سرویس AI. {str(e)}"
-            chat_history_list.append({"role": "assistant", "content": error_message_for_history, "is_error": True,
-                                      "timestamp": str(timezone.now())})
-            current_session_instance.chat_history = json.dumps(chat_history_list, ensure_ascii=False)
-            current_session_instance.save(update_fields=['chat_history', 'updated_at'])
             return Response({'detail': f'خطا در ارتباط با سرویس AI: {e}'},
                             status=status.HTTP_503_SERVICE_UNAVAILABLE)
         except Exception as e:
             logger.exception(f"An unexpected error occurred during AI interaction for user {user.phone_number}: {e}")
-            # Log error to chat history
-            error_message_for_history = f"خطای سیستمی: یک خطای پیش‌بینی نشده رخ داد. {str(e)}"
-            chat_history_list.append({"role": "assistant", "content": error_message_for_history, "is_error": True,
-                                      "timestamp": str(timezone.now())})
-            current_session_instance.chat_history = json.dumps(chat_history_list, ensure_ascii=False)
-            current_session_instance.save(update_fields=['chat_history', 'updated_at'])
             return Response({'detail': f'خطای پیش‌بینی نشده در طول تعامل با AI: {e}'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -705,8 +659,11 @@ class AiChatSessionListCreate(generics.ListCreateAPIView):
         return self.queryset.filter(user=self.request.user, is_active=True).order_by('-created_at')
 
     def perform_create(self, serializer):
+        # Creation is handled by AIAgentChatView to ensure Metis session is also created.
+        # This endpoint is primarily for listing.
         logger.warning(
             "Direct creation of AiChatSession via API is handled by AIAgentChatView. This endpoint is for listing.")
+        # To prevent creation here unless specifically designed for it:
         raise PermissionDenied("Sessions are created via the AI chat endpoint.")
 
 
@@ -731,7 +688,7 @@ class AiChatSessionDetail(generics.RetrieveUpdateDestroyAPIView):
             logger.error(
                 f"Failed to delete Metis session {instance.metis_session_id} for user {self.request.user.phone_number}: {e}",
                 exc_info=True)
-        instance.delete()
+        instance.delete()  # Delete local session regardless
         logger.info(
             f"Local AiResponse session {instance.ai_session_id} deleted for user {self.request.user.phone_number}.")
 
