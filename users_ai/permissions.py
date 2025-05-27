@@ -13,8 +13,7 @@ class IsMetisToolCallback(BasePermission):
     """
 
     def has_permission(self, request, view):
-        # توکن را از query parameters درخواست بخوانید (مثلاً ?token=...)
-        token_in_request = request.query_params.get('metis_secret_token')  # نام پارامتر را می‌توانید تغییر دهید
+        token_in_request = request.query_params.get('metis_secret_token')
 
         expected_token = settings.METIS_CALLBACK_SECRET_TOKEN
 

@@ -36,12 +36,10 @@ class MetisAIService:
             response = requests.request(method, url, headers=self.headers, json=json_data, params=params, timeout=60)
             response.raise_for_status()
             logger.debug(f"[_make_request] Response Status: {response.status_code}")
-            # Avoid logging potentially large response body by default, or log snippet
-            # logger.debug(f"[_make_request] Response Body: {response.text}")
             try:
                 response_json = response.json()
-                logger.debug(
-                    f"[_make_request] Response JSON Body: {json.dumps(response_json, indent=2, ensure_ascii=False)}")
+                # Log only a part of the response if it's too large, or a summary
+                # logger.debug(f"[_make_request] Response JSON Body: {json.dumps(response_json, indent=2, ensure_ascii=False)}")
                 return response_json
             except json.JSONDecodeError as e:
                 logger.error(
@@ -51,13 +49,14 @@ class MetisAIService:
         except requests.exceptions.HTTPError as e:
             logger.error(
                 f"[_make_request] HTTP Error: {e.response.status_code} for url: {e.request.url}, Response: {getattr(e.response, 'text', 'No response text')}")
+            # Raise a more specific error or re-raise with more context if needed
             raise ConnectionError(
                 f"Metis AI API Error ({e.response.status_code}): {getattr(e.response, 'text', 'No response text')}")
-        except requests.exceptions.RequestException as e:
+        except requests.exceptions.RequestException as e:  # More general network/request error
             logger.error(
                 f"[_make_request] Network/Request Error: {e} for url: {e.request.url if e.request else 'N/A'}")
             raise ConnectionError(f"Failed to connect to Metis AI: {e}")
-        except Exception as e:
+        except Exception as e:  # Catch any other unexpected errors
             logger.error(f"[_make_request] An unexpected error occurred: {e}", exc_info=True)
             raise
 
@@ -117,21 +116,21 @@ class MetisAIService:
         endpoint = f"chat/session/{session_id}/message"
 
         if message_type == "TOOL":
-            # message_content should be a Python list of tool_result dictionaries
-            # e.g., [{"tool_call_id": "...", "tool_name": "...", "output": {...}}]
+            # message_content should be the Python list of tool_result dictionaries
+            # as prepared in AIAgentChatView's 'tool_outputs_for_metis_api'
             message_data = {
                 "type": "TOOL",
-                "tool_results": message_content  # Directly use the Python list of dicts
+                "tool_results": message_content
             }
-        else:  # USER, SYSTEM, ASSISTANT
+        else:  # USER, SYSTEM, ASSISTANT etc.
             message_data = {
                 "type": message_type,
                 "content": message_content
             }
 
-        data = {"message": message_data}
-        logger.debug(f"[send_message] Data to send to Metis: {json.dumps(data, indent=2, ensure_ascii=False)}")
-        return self._make_request("POST", endpoint, json_data=data)
+        data_to_send = {"message": message_data}
+        logger.debug(f"[send_message] Data to send to Metis: {json.dumps(data_to_send, indent=2, ensure_ascii=False)}")
+        return self._make_request("POST", endpoint, json_data=data_to_send)
 
     def delete_chat_session(self, session_id):
         endpoint = f"chat/session/{session_id}"
@@ -154,12 +153,10 @@ class MetisAIService:
 
     @staticmethod
     def get_tool_schemas_for_metis_bot():
-        # Read from Django settings if available, otherwise use default.
-        # User should define DJANGO_API_BASE_URL in their settings.py for production.
         django_api_base_url = getattr(settings, 'DJANGO_API_BASE_URL', "https://api.mobixtube.ir/api")
-        if django_api_base_url == "https://api.mobixtube.ir/api":
-            logger.warning(
-                "Using default DJANGO_API_BASE_URL. Ensure this is configured in settings.py for production.")
+        if django_api_base_url == "https://api.mobixtube.ir/api" and not hasattr(settings, 'DJANGO_API_BASE_URL'):
+            logger.warning("Using default DJANGO_API_BASE_URL 'https://api.mobixtube.ir/api'. "
+                           "Define DJANGO_API_BASE_URL in settings.py for production or other environments.")
 
         def create_arg(name, description, arg_type, required, enum_values=None):
             arg = {"name": name, "description": description, "type": arg_type, "required": required}
@@ -171,13 +168,15 @@ class MetisAIService:
         tools.append({
             "name": "create_goal",
             "description": "اهداف کاربر را ثبت یا ویرایش می کند. برای ثبت یک هدف جدید یا بروزرسانی هدف موجود استفاده می شود.",
-            "url": f"{django_api_base_url}/goals/",
-            "method": "POST",
+            "url": f"{django_api_base_url}/goals/",  # Informational, actual execution is internal
+            "method": "POST",  # Informational
             "args": [
-                create_arg("goal_type", "نوع هدف (مثلاً شخصی، حرفه‌ای، مالی، سلامتی).", "STRING", True),
+                create_arg("goal_type", "نوع هدف (مثلاً شخصی، حرفه‌ای، مالی، سلامتی).", "STRING", True),  # Required
                 create_arg("description", "توضیح کامل هدف کاربر (مثلاً یادگیری زبان جدید).", "STRING", True),
+                # Required
                 create_arg("priority", "اولویت هدف (از 1 تا 5، 5 بالاترین اولویت).", "INTEGER", False),
-                create_arg("deadline", "تاریخ مهلت دستیابی به هدف در قالب YYYY-MM-DD.", "STRING", False),
+                create_arg("deadline", "تاریخ مهلت دستیابی به هدف در قالب<y_bin_46>YYYY-MM-DD.", "STRING", False),
+                # Ensure AI sends in YYYY-MM-DD
                 create_arg("progress", "درصد پیشرفت فعلی هدف (از 0.0 تا 100.0).", "NUMBER", False),
             ],
         })
