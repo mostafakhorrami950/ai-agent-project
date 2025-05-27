@@ -22,18 +22,44 @@ class MetisAIService:
             raise ValueError("Metis AI credentials are not set up.")
         logger.debug("MetisAIService initialized for Bot/Session API.")
 
-    def _make_request(self, endpoint, method="GET", data=None):
-        url = f"{self.base_url}{endpoint}"
-        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+    def _make_request(self, method, endpoint, json_data=None, params=None):
+        url = f"{self.base_url}/{endpoint}"
         try:
-            response = requests.request(method, url, json=data, headers=headers, timeout=10)
+            logger.debug(f"[_make_request] Attempting request to {method} {url}")
+            logger.debug(f"[_make_request] Request Headers: {self.headers}")
+            if json_data:
+                logger.debug(
+                    f"[_make_request] Request JSON Data: {json.dumps(json_data, indent=2, ensure_ascii=False)}")
+            if params:
+                logger.debug(f"[_make_request] Request Params: {params}")
+
+            response = requests.request(method, url, headers=self.headers, json=json_data, params=params, timeout=60)
             response.raise_for_status()
-            return response.json()
+            logger.debug(f"[_make_request] Response Status: {response.status_code}")
+            # Avoid logging potentially large response body by default, or log snippet
+            # logger.debug(f"[_make_request] Response Body: {response.text}")
+            try:
+                response_json = response.json()
+                logger.debug(
+                    f"[_make_request] Response JSON Body: {json.dumps(response_json, indent=2, ensure_ascii=False)}")
+                return response_json
+            except json.JSONDecodeError as e:
+                logger.error(
+                    f"[_make_request] JSON Decode Error: {e}, Response content: {response.text if 'response' in locals() else 'N/A'}")
+                raise ValueError(f"Invalid JSON response from Metis AI: {e}")
+
+        except requests.exceptions.HTTPError as e:
+            logger.error(
+                f"[_make_request] HTTP Error: {e.response.status_code} for url: {e.request.url}, Response: {getattr(e.response, 'text', 'No response text')}")
+            raise ConnectionError(
+                f"Metis AI API Error ({e.response.status_code}): {getattr(e.response, 'text', 'No response text')}")
         except requests.exceptions.RequestException as e:
-            if isinstance(e, requests.exceptions.HTTPError) and e.response.status_code == 503:
-                logger.warning("Metis AI API is temporarily unavailable (503).")
-                return {"status": "error", "message": "سرویس AI موقتاً در دسترس نیست."}
-            raise ConnectionError(f"Metis AI API Error: {str(e)}") from e
+            logger.error(
+                f"[_make_request] Network/Request Error: {e} for url: {e.request.url if e.request else 'N/A'}")
+            raise ConnectionError(f"Failed to connect to Metis AI: {e}")
+        except Exception as e:
+            logger.error(f"[_make_request] An unexpected error occurred: {e}", exc_info=True)
+            raise
 
     def create_bot(self, name, enabled, provider_config, instructions=None, functions=None, corpus_ids=None):
         endpoint = "bots"
