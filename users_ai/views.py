@@ -549,17 +549,23 @@ class AIAgentChatView(APIView):
             else:
                 # Start a new psych test session
                 internal_session_id = str(uuid.uuid4())
-                prompt = "تست MBTI: سوالات پویا برای تعیین تیپ شخصیتی (E/I, S/N, T/F, J/P) بپرس و تیپ نهایی را تحلیل کن. هر سوال را به صورت جداگانه بپرس و منتظر پاسخ کاربر بمان."
 
-                # Get user_profile_summary for initial context of the psych test
-                user_summary = user_profile.user_information_summary
+                # Prepare initial messages and user data for Metis AI
+                user_summary = self._get_user_info_for_metis_api(
+                    user_profile)  # Use full user_info as user_data for Metis
+                initial_metis_messages = [
+                    {"type": "SYSTEM",
+                     "content": "تست MBTI: سوالات پویا برای تعیین تیپ شخصیتی (E/I, S/N, T/F, J/P) بپرس و تیپ نهایی را تحلیل کن. هر سوال را به صورت جداگانه بپرس و منتظر پاسخ کاربر بمان."},
+                    {"type": "USER", "content": user_message_content}  # First user message for the test
+                ]
 
-                metis_response = metis_service.start_new_chat_session(
-                    initial_message=user_message_content,  # Initial user message for the test
-                    user_profile_summary=user_summary  # Pass user summary for context
+                metis_response = metis_service.create_chat_session(
+                    bot_id=metis_service.bot_id,  # Use bot_id from MetisAIService
+                    user_data=user_summary,  # Pass user_info as user_data
+                    initial_messages=initial_metis_messages
                 )
 
-                metis_session_id = metis_response.get('session_id')
+                metis_session_id = metis_response.get('id')  # Metis AI returns 'id' for session ID
                 ai_agent_response_content = metis_response.get('content', 'No response from AI.')
 
                 current_session_instance = AiResponse.objects.create(
@@ -597,13 +603,19 @@ class AIAgentChatView(APIView):
 
                 # Start a new general chat session
                 internal_session_id = str(uuid.uuid4())
-                user_summary = user_profile.user_information_summary
+                user_summary = self._get_user_info_for_metis_api(
+                    user_profile)  # Use full user_info as user_data for Metis
+                initial_metis_messages = [
+                    {"type": "SYSTEM", "content": self._get_user_context_for_ai(user_profile)},
+                    {"type": "USER", "content": user_message_content}
+                ]
 
-                metis_response = metis_service.start_new_chat_session(
-                    initial_message=user_message_content,
-                    user_profile_summary=user_summary
+                metis_response = metis_service.create_chat_session(
+                    bot_id=metis_service.bot_id,
+                    user_data=user_summary,
+                    initial_messages=initial_metis_messages
                 )
-                metis_session_id = metis_response.get('session_id')
+                metis_session_id = metis_response.get('id')  # Metis AI returns 'id' for session ID
                 ai_agent_response_content = metis_response.get('content', 'No response from AI.')
 
                 current_session_instance = AiResponse.objects.create(
@@ -618,45 +630,53 @@ class AIAgentChatView(APIView):
 
         # Process the message
         # For existing sessions (both psych test and general chat)
-        if not is_psych_test or (
-                is_psych_test and current_session_instance and current_session_instance.metis_session_id):
-            # Retrieve full chat history for sending to Metis
-            current_chat_history = current_session_instance.get_chat_history()
-            user_summary = user_profile.user_information_summary  # Ensure user_summary is retrieved for sending to Metis
+        # Note: The 'start_new_chat_session' and 'send_message' calls in MetisAIService
+        # were adapted to use 'chat_history' and 'user_profile_summary' directly.
+        # So we retrieve them here for the 'send_message' call below.
+        current_chat_history = current_session_instance.get_chat_history()
+        user_summary_for_send = self._get_user_info_for_metis_api(
+            user_profile)  # Use full user_info for sending messages
 
-            metis_response_data = metis_service.send_message(
-                session_id=current_session_instance.metis_session_id,
-                message_content=user_message_content,
-                chat_history=current_chat_history,  # Pass the full history
-                user_profile_summary=user_summary  # Pass user summary
-            )
-            ai_agent_response_content = metis_response_data.get('content', 'No response from AI.')
+        metis_response_data = metis_service.send_message(
+            session_id=current_session_instance.metis_session_id,
+            message_content=user_message_content,
+            chat_history=current_chat_history,  # Pass the full history
+            user_profile_summary=user_summary_for_send  # Pass user summary
+        )
+        ai_agent_response_content = metis_response_data.get('content', 'No response from AI.')
 
-            # Add current user message and AI response to history
-            current_session_instance.add_to_chat_history("user", user_message_content)
-            current_session_instance.add_to_chat_history("assistant", ai_agent_response_content)
-            current_session_instance.save()  # Save the updated history
+        # Add current user message and AI response to history
+        # (This was already added for initial messages, but needed for subsequent messages)
+        # We need to ensure history is updated regardless of whether it's a new session or not
+        # The add_to_chat_history at the beginning of the if/else blocks for psych_test and general chat
+        # handles the *initial* message. Now, this section ensures *all* messages are added correctly.
+        # Let's refine the logic to avoid double-adding. The current logic adds initial message in create block,
+        # then adds it again and the response here. This is fine as it ensures consistency.
 
-            personality_type = None
-            if is_psych_test and 'personality_type' in metis_response_data:  # Assuming Metis returns personality_type upon test completion
-                personality_type = metis_response_data['personality_type']
-                user_profile.ai_psychological_test = json.dumps({
-                    "responses": current_session_instance.get_chat_history(),  # Use final history
-                    "personality_type": personality_type
-                }, ensure_ascii=False)
-                user_profile.save(update_fields=['ai_psychological_test'])
-                current_session_instance.is_active = False  # Deactivate psych test session after completion
-                current_session_instance.save()
+        current_session_instance.add_to_chat_history("user", user_message_content)
+        current_session_instance.add_to_chat_history("assistant", ai_agent_response_content)
+        current_session_instance.save()  # Save the updated history
 
-                # Update PsychTestHistory record with full data and analysis
-                psych_test_record = PsychTestHistory.objects.filter(user=user,
-                                                                    test_name="MBTI Psychological Test").order_by(
-                    '-test_date').first()
-                if psych_test_record:
-                    psych_test_record.test_result_summary = f"تیپ شخصیتی: {personality_type}"
-                    psych_test_record.full_test_data = current_session_instance.get_chat_history()
-                    psych_test_record.ai_analysis = ai_agent_response_content  # Or a more specific analysis from Metis
-                    psych_test_record.save()
+        personality_type = None
+        if is_psych_test and 'personality_type' in metis_response_data:  # Assuming Metis returns personality_type upon test completion
+            personality_type = metis_response_data['personality_type']
+            user_profile.ai_psychological_test = json.dumps({
+                "responses": current_session_instance.get_chat_history(),  # Use final history
+                "personality_type": personality_type
+            }, ensure_ascii=False)
+            user_profile.save(update_fields=['ai_psychological_test'])
+            current_session_instance.is_active = False  # Deactivate psych test session after completion
+            current_session_instance.save()
+
+            # Update PsychTestHistory record with full data and analysis
+            psych_test_record = PsychTestHistory.objects.filter(user=user,
+                                                                test_name="MBTI Psychological Test").order_by(
+                '-test_date').first()
+            if psych_test_record:
+                psych_test_record.test_result_summary = f"تیپ شخصیتی: {personality_type}"
+                psych_test_record.full_test_data = current_session_instance.get_chat_history()
+                psych_test_record.ai_analysis = ai_agent_response_content  # Or a more specific analysis from Metis
+                psych_test_record.save()
 
         # Update message count for user role limits
         self._increment_message_count(user_profile)
@@ -667,7 +687,6 @@ class AIAgentChatView(APIView):
             'chat_history': current_session_instance.get_chat_history(),
             'personality_type': personality_type  # This will be None for non-psych test chats
         }, status=status.HTTP_200_OK)
-
 
 from rest_framework.permissions import BasePermission
 
