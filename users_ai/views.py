@@ -625,7 +625,7 @@ class AiChatSessionDetail(generics.RetrieveUpdateDestroyAPIView):
 
 
 class TestTimeView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         now = datetime.datetime.now().isoformat()
