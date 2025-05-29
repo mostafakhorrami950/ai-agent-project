@@ -134,7 +134,7 @@ class HealthRecordDetail(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return get_object_or_404(HealthRecord, user=self.request.user)
-    
+
 class PsychologicalProfileDetail(generics.RetrieveUpdateAPIView):
     queryset = PsychologicalProfile.objects.all()
     serializer_class = PsychologicalProfileSerializer
