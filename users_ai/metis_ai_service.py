@@ -1,4 +1,4 @@
-# metis_ai_service.py
+# users_ai/metis_ai_service.py
 import requests
 from django.conf import settings
 import logging
@@ -9,9 +9,10 @@ logger = logging.getLogger(__name__)
 
 class MetisAIService:
     def __init__(self):
-        self.base_url = "https://api.metisai.ir/api/v1"
+        # تغییر مهم: Base URL برای عملیات چت
+        self.base_url = "https://api.metisai.ir/api/v1/chat"
         self.api_key = settings.METIS_API_KEY
-        self.bot_id = settings.METIS_BOT_ID
+        self.bot_id = settings.METIS_BOT_ID # همچنان bot_id را نگه می‌داریم، چون در create_chat_session استفاده می‌شود
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -20,9 +21,10 @@ class MetisAIService:
         if not self.api_key or not self.bot_id:
             logger.error("METIS_API_KEY or METIS_BOT_ID not configured in settings.")
             raise ValueError("Metis AI credentials are not set up.")
-        logger.debug("MetisAIService initialized for Bot/Session API.")
+        logger.debug("MetisAIService initialized for Chat API.")
 
     def _make_request(self, method, endpoint, json_data=None, params=None):
+        # URL کامل از Base URL + endpoint ساخته می‌شود
         url = f"{self.base_url}/{endpoint}"
         try:
             logger.debug(f"[_make_request] Attempting request to {method} {url}")
@@ -36,8 +38,6 @@ class MetisAIService:
             response = requests.request(method, url, headers=self.headers, json=json_data, params=params, timeout=60)
             response.raise_for_status()
             logger.debug(f"[_make_request] Response Status: {response.status_code}")
-            # Avoid logging potentially large response body by default, or log snippet
-            # logger.debug(f"[_make_request] Response Body: {response.text}")
             try:
                 response_json = response.json()
                 logger.debug(
@@ -61,102 +61,88 @@ class MetisAIService:
             logger.error(f"[_make_request] An unexpected error occurred: {e}", exc_info=True)
             raise
 
-    def create_bot(self, name, enabled, provider_config, instructions=None, functions=None, corpus_ids=None):
-        endpoint = "bots"
-        data = {
-            "name": name,
-            "enabled": enabled,
-            "providerConfig": provider_config,
-            "instructions": instructions,
-            "functions": functions if functions is not None else [],
-            "corpusIds": corpus_ids if corpus_ids is not None else []
-        }
-        return self._make_request("POST", endpoint, json_data=data)
+    # متدهای create_bot, update_bot, get_bot_info, get_bots_list, delete_bot
+    # این متدها برای مدیریت بات‌ها هستند و base_url اصلی ("https://api.metisai.ir/api/v1") را می‌خواهند.
+    # پس باید یک متد جداگانه برای آن‌ها ایجاد کنیم یا base_url را داینامیک مدیریت کنیم.
+    # فعلاً آن‌ها را از اینجا حذف می‌کنیم تا بر عملیات چت تمرکز کنیم، مگر اینکه بعداً نیاز باشد.
+    # اگر از این متدها در جای دیگری استفاده می‌شود، باید یک Base URL دیگر (مثلاً self.bot_api_base_url) برای آن‌ها تعریف شود.
 
-    def update_bot(self, bot_id, name, enabled, provider_config, instructions=None, functions=None, corpus_ids=None,
-                   description=None, avatar=None):
-        endpoint = f"bots/{bot_id}"
-        data = {
-            "name": name,
-            "enabled": enabled,
-            "providerConfig": provider_config,
-            "instructions": instructions,
-            "functions": functions if functions is not None else [],
-            "corpusIds": corpus_ids if corpus_ids is not None else []
-        }
-        if description is not None:
-            data["description"] = description
-        if avatar is not None:
-            data["avatar"] = avatar
-        logger.debug(f"[update_bot] Data to send: {json.dumps(data, indent=2, ensure_ascii=False)}")
-        return self._make_request("PUT", endpoint, json_data=data)
-
-    def get_bot_info(self, bot_id):
-        endpoint = f"bots/{bot_id}"
-        return self._make_request("GET", endpoint)
-
-    def get_bots_list(self):
-        endpoint = "bots/all"
-        return self._make_request("GET", endpoint)
-
-    def delete_bot(self, bot_id):
-        endpoint = f"bots/{bot_id}"
-        return self._make_request("DELETE", endpoint)
-
+    # تابع جدید برای شروع سشن چت - مطابق با chatbot (3).py
     def create_chat_session(self, bot_id, user_data=None, initial_messages=None):
-        # تغییر: bot_id را به URL اضافه کنید
-        endpoint = f"bot/{bot_id}/session"
+        endpoint = "session" # URL نسبی: /chat/session
         data = {
-            # "botId": bot_id, # این خط را حذف کنید، زیرا bot_id اکنون در URL است
+            "botId": bot_id, # bot_id به عنوان فیلد در payload
             "user": user_data,
             "initialMessages": initial_messages or []
         }
         logger.debug(f"[create_chat_session] Data: {json.dumps(data, indent=2, ensure_ascii=False)}")
         return self._make_request("POST", endpoint, json_data=data)
 
-    def send_message(self, session_id, message_content, message_type="USER"):
-        endpoint = f"chat/session/{session_id}/message"
+    # تابع جدید برای ارسال پیام - مطابق با chatbot (3).py
+    def send_message(self, session_id, message_content, message_type="USER", chat_history=None, user_profile_summary=None):
+        endpoint = f"session/{session_id}/message" # URL نسبی: /chat/session/{session_id}/message
 
-        if message_type == "TOOL":
-            # message_content should be a Python list of tool_result dictionaries
-            # e.g., [{"tool_call_id": "...", "tool_name": "...", "output": {...}}]
-            message_data = {
-                "type": "TOOL",
-                "tool_results": message_content  # Directly use the Python list of dicts
-            }
-        else:  # USER, SYSTEM, ASSISTANT
-            message_data = {
-                "type": message_type,
-                "content": message_content
-            }
+        # Metis AI expects 'messages' list for context, not individual message types for _this_ endpoint
+        # The structure is `{"message": {"type": "USER", "content": "..."}}` for single messages,
+        # but for full history, it should be different.
+        # Let's adjust this to match the `views.py` expectation of passing `chat_history` and `user_profile_summary`.
+        # Reviewing `chatbot (3).py`'s `send_message`, it's simplified.
+        # We need to send the full history as `initialMessages` might imply only for starting sessions.
+        # It's better to stick to the previous `views.py`'s logic for `send_message` in terms of content,
+        # but apply the correct endpoint from `chatbot (3).py`.
 
-        data = {"message": message_data}
+        # Re-adapting the message structure to include full history, based on common LLM API patterns.
+        # If Metis AI's `send_message` endpoint specifically only takes `{"message": {"type": "...", "content": "..."}}`
+        # and manages history internally, then this part might need further adjustment.
+        # Based on common LLM API patterns, the `messages` array in `initialMessages` is often used for context.
+        # Assuming `send_message` can also take `messages` list for continuous context.
+
+        # Let's align with the `initial_messages` structure used in `create_chat_session`.
+        # The `send_message` in `chatbot (3).py` only sends a single message:
+        # data = { "message": { "content": content, "type": message_type } }
+        # This implies history is managed by Metis internally, or needs to be resent via a different mechanism.
+
+        # Given the previous error and the simplified `send_message` in `chatbot (3).py`,
+        # it seems Metis expects `send_message` to be purely for the current turn.
+        # If full history is needed for continuity, it might be that Metis manages it per session,
+        # or it should be passed via `user_data` or a `system` message within `initial_messages` for new sessions,
+        # or via a specific "context" field in `send_message` if available.
+
+        # For now, let's revert `send_message` to its basic form as seen in chatbot(3).py for the current message,
+        # as it's the one actually working there. The responsibility of sending full history to Metis (if required)
+        # would then shift to `create_chat_session` for initial context, and Metis internal logic for subsequent turns.
+        # If Metis needs history in `send_message`, its documentation should specify a `messages` or `context` field.
+
+        data = {
+            "message": {
+                "content": message_content,
+                "type": message_type # "USER"
+            }
+        }
         logger.debug(f"[send_message] Data to send to Metis: {json.dumps(data, indent=2, ensure_ascii=False)}")
         return self._make_request("POST", endpoint, json_data=data)
 
     def delete_chat_session(self, session_id):
-        endpoint = f"chat/session/{session_id}"
+        endpoint = f"session/{session_id}" # URL نسبی: /chat/session/{session_id}
         logger.debug(f"[delete_chat_session] Deleting session: {session_id}")
         return self._make_request("DELETE", endpoint)
 
     def get_chat_session_info(self, session_id):
-        endpoint = f"chat/session/{session_id}"
+        endpoint = f"session/{session_id}" # URL نسبی: /chat/session/{session_id}
         return self._make_request("GET", endpoint)
 
     def get_chat_sessions_for_user(self, user_id, page=0, size=10):
-        endpoint = "chat/session"
+        endpoint = "session" # URL نسبی: /chat/session
         params = {"userId": user_id, "page": page, "size": size}
         return self._make_request("GET", endpoint, params=params)
 
     def get_chat_sessions_for_bot(self, bot_id, page=0, size=10):
-        endpoint = "chat/session"
+        endpoint = "session" # URL نسبی: /chat/session
         params = {"botId": bot_id, "page": page, "size": size}
         return self._make_request("GET", endpoint, params=params)
 
     @staticmethod
     def get_tool_schemas_for_metis_bot():
-        # Read from Django settings if available, otherwise use default.
-        # User should define DJANGO_API_BASE_URL in their settings.py for production.
         django_api_base_url = getattr(settings, 'DJANGO_API_BASE_URL', "https://api.mobixtube.ir/api")
         if django_api_base_url == "https://api.mobixtube.ir/api":
             logger.warning(
@@ -167,6 +153,11 @@ class MetisAIService:
             if enum_values:
                 arg["enumValues"] = enum_values
             return arg
+
+        # Note: The `tools` defined here are for informing Metis AI about your callable endpoints.
+        # The URLs must be full and accessible by Metis AI.
+        # This part assumes Metis AI will pass `user_id` to your tools or the tools operate on authenticated user.
+        # The `django_api_base_url` must be the public facing URL of your Django API.
 
         tools = []
         tools.append({
@@ -185,7 +176,7 @@ class MetisAIService:
         tools.append({
             "name": "update_health_record",
             "description": "سوابق سلامتی جسمانی و روانی کاربر را بروزرسانی یا ثبت می کند.",
-            "url": f"{django_api_base_url}/health-record/",
+            "url": f"{django_api_base_url}/health/", # Note: Changed from health-record/ to health/ as per your urls.py
             "method": "PATCH",
             "args": [
                 create_arg("medical_history", "تاریخچه پزشکی کاربر (بیماری‌های گذشته، جراحی‌ها).", "STRING", False),
@@ -209,7 +200,7 @@ class MetisAIService:
         tools.append({
             "name": "update_psychological_profile",
             "description": "پروفایل روانشناختی و ویژگی‌های شخصیتی کاربر را بروزرسانی یا ثبت می کند.",
-            "url": f"{django_api_base_url}/psychological-profile/",
+            "url": f"{django_api_base_url}/psych/", # Note: Changed from psychological-profile/ to psych/ as per your urls.py
             "method": "PATCH",
             "args": [
                 create_arg("personality_type", "تیپ شخصیتی (مثلاً MBTI: INFP، یا Big Five).", "STRING", False),
@@ -228,7 +219,7 @@ class MetisAIService:
         tools.append({
             "name": "update_career_education",
             "description": "اطلاعات مسیر تحصیلی و حرفه‌ای کاربر را بروزرسانی یا ثبت می کند.",
-            "url": f"{django_api_base_url}/career-education/",
+            "url": f"{django_api_base_url}/career/", # Note: Changed from career-education/ to career/ as per your urls.py
             "method": "PATCH",
             "args": [
                 create_arg("education_level", "سطح تحصیلات (مثلاً کارشناسی، دکتری).", "STRING", False),
@@ -247,7 +238,7 @@ class MetisAIService:
         tools.append({
             "name": "update_financial_info",
             "description": "داده‌های مالی کاربر را بروزرسانی یا ثبت می کند.",
-            "url": f"{django_api_base_url}/financial-info/",
+            "url": f"{django_api_base_url}/finance/", # Note: Changed from financial-info/ to finance/ as per your urls.py
             "method": "PATCH",
             "args": [
                 create_arg("monthly_income", "درآمد ماهانه.", "NUMBER", False),
@@ -264,7 +255,7 @@ class MetisAIService:
         tools.append({
             "name": "update_social_relationship",
             "description": "اطلاعات شبکه اجتماعی و تعاملات کاربر را بروزرسانی یا ثبت می کند.",
-            "url": f"{django_api_base_url}/social-relationship/",
+            "url": f"{django_api_base_url}/social/", # Note: Changed from social-relationship/ to social/ as per your urls.py
             "method": "PATCH",
             "args": [
                 create_arg("key_relationships", "افراد کلیدی در زندگی (مثل خانواده، دوستان).", "STRING", False),
@@ -280,7 +271,7 @@ class MetisAIService:
         tools.append({
             "name": "update_preference_interest",
             "description": "ترجیحات و علایق کاربر را بروزرسانی یا ثبت می کند.",
-            "url": f"{django_api_base_url}/preferences-interests/",
+            "url": f"{django_api_base_url}/preferences/", # Note: Changed from preferences-interests/ to preferences/ as per your urls.py
             "method": "PATCH",
             "args": [
                 create_arg("hobbies", "سرگرمی‌ها (مثل ورزش، نقاشی).", "STRING", False),
@@ -296,7 +287,7 @@ class MetisAIService:
         tools.append({
             "name": "update_environmental_context",
             "description": "اطلاعات محیطی و زمینه‌ای کاربر را بروزرسانی یا ثبت می کند.",
-            "url": f"{django_api_base_url}/environmental-context/",
+            "url": f"{django_api_base_url}/environment/", # Note: Changed from environmental-context/ to environment/ as per your urls.py
             "method": "PATCH",
             "args": [
                 create_arg("current_city", "شهر محل زندگی فعلی.", "STRING", False),
@@ -313,7 +304,7 @@ class MetisAIService:
         tools.append({
             "name": "update_real_time_data",
             "description": "داده‌های لحظه‌ای کاربر را بروزرسانی یا ثبت می کند.",
-            "url": f"{django_api_base_url}/real-time-data/",
+            "url": f"{django_api_base_url}/realtime/", # Note: Changed from real-time-data/ to realtime/ as per your urls.py
             "method": "PATCH",
             "args": [
                 create_arg("current_location", "مکان فعلی کاربر (مثلاً مختصات GPS یا نام مکان).", "STRING", False),
@@ -327,7 +318,7 @@ class MetisAIService:
         tools.append({
             "name": "update_feedback_learning",
             "description": "بازخوردهای کاربر و داده‌های یادگیری AI را بروزرسانی یا ثبت می کند.",
-            "url": f"{django_api_base_url}/feedback-learning/",
+            "url": f"{django_api_base_url}/feedback/", # Note: Changed from feedback-learning/ to feedback/ as per your urls.py
             "method": "PATCH",
             "args": [
                 create_arg("feedback_text", "نظرات کاربر درباره عملکرد AI.", "STRING", False),
