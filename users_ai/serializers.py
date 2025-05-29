@@ -3,7 +3,7 @@ from rest_framework import serializers
 from .models import (
     UserProfile, HealthRecord, PsychologicalProfile, CareerEducation,
     FinancialInfo, SocialRelationship, PreferenceInterest, EnvironmentalContext,
-    RealTimeData, FeedbackLearning, Goal, Habit, AiResponse, UserRole,
+    RealTimeData, FeedbackLearning, Goal, Habit, AiResponse, UserRole,PsychTestHistory
     # CustomUser # اگر CustomUser رو مستقیم ایمپورت می‌کنید
 )
 # from django.contrib.auth.models import User # این خط رو حذف یا کامنت کنید
@@ -171,3 +171,9 @@ class AiResponseSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['user', 'created_at', 'updated_at', 'expires_at', 'is_active', 'ai_session_id']
         # ai_session_id فقط خواندنی است چون توسط سیستم مدیریت می‌شود
+
+class PsychTestHistorySerializer(serializers.ModelSerializer): # اضافه شده
+    class Meta:
+        model = PsychTestHistory
+        fields = '__all__'
+        read_only_fields = ['user', 'test_date'] # test_date is auto_now_add

@@ -10,6 +10,7 @@ from django.utils import timezone
 import uuid
 import json
 import logging
+from django.db import transaction
 import datetime  # این ایمپورت در فایل شما بود، اگر لازم نیست می‌توانید حذف کنید
 # import requests # این ایمپورت در فایل شما بود، اگر لازم نیست می‌توانید حذف کنید
 
@@ -17,14 +18,14 @@ import datetime  # این ایمپورت در فایل شما بود، اگر ل
 from .models import (
     UserProfile, HealthRecord, PsychologicalProfile, CareerEducation,
     FinancialInfo, SocialRelationship, PreferenceInterest, EnvironmentalContext,
-    RealTimeData, FeedbackLearning, Goal, Habit, AiResponse, UserRole
+    RealTimeData, FeedbackLearning, Goal, Habit, AiResponse, UserRole, PsychTestHistory # اضافه کردن PsychTestHistory
 )
 # Import your serializers
 from .serializers import (
     UserSerializer, UserProfileSerializer, HealthRecordSerializer, PsychologicalProfileSerializer,
     CareerEducationSerializer, FinancialInfoSerializer, SocialRelationshipSerializer,
     PreferenceInterestSerializer, EnvironmentalContextSerializer, RealTimeDataSerializer,
-    FeedbackLearningSerializer, GoalSerializer, HabitSerializer, AiResponseSerializer
+    FeedbackLearningSerializer, GoalSerializer, HabitSerializer, AiResponseSerializer, PsychTestHistorySerializer # اضافه کردن PsychTestHistorySerializer
 )
 # Import your Metis AI service
 from .metis_ai_service import MetisAIService
@@ -37,6 +38,12 @@ class RegisterUserView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.AllowAny]
+
+    def perform_create(self, serializer):
+        user = serializer.save()
+        # ایجاد UserProfile برای کاربر جدید
+        UserProfile.objects.create(user=user)
+        logger.info(f"User {user.phone_number} registered successfully and UserProfile created.")
 
 
 class LoginUserView(APIView):
@@ -68,6 +75,8 @@ class LoginUserView(APIView):
             'user_id': user.id,
             'phone_number': user.phone_number
         }, status=status.HTTP_200_OK)
+
+
 
 
 class UserSpecificOneToOneViewSet(generics.RetrieveUpdateDestroyAPIView):
@@ -109,14 +118,23 @@ class UserSpecificForeignKeyDetailViewSet(generics.RetrieveUpdateDestroyAPIView)
         return self.queryset.filter(user=self.request.user)
 
 
-class UserProfileDetail(UserSpecificOneToOneViewSet):
+# General Detail Views for OneToOne models
+class UserProfileDetail(generics.RetrieveUpdateAPIView):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return get_object_or_404(UserProfile, user=self.request.user)
 
 
-class HealthRecordDetail(UserSpecificOneToOneViewSet):
-    queryset = HealthRecord.objects.all()
-    serializer_class = HealthRecordSerializer
+class PsychologicalProfileDetail(generics.RetrieveUpdateAPIView):
+    queryset = PsychologicalProfile.objects.all()
+    serializer_class = PsychologicalProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return get_object_or_404(PsychologicalProfile, user=self.request.user)
 
 
 class PsychologicalProfileDetail(UserSpecificOneToOneViewSet):
@@ -124,59 +142,104 @@ class PsychologicalProfileDetail(UserSpecificOneToOneViewSet):
     serializer_class = PsychologicalProfileSerializer
 
 
-class CareerEducationDetail(UserSpecificOneToOneViewSet):
+class CareerEducationDetail(generics.RetrieveUpdateAPIView):
     queryset = CareerEducation.objects.all()
     serializer_class = CareerEducationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return get_object_or_404(CareerEducation, user=self.request.user)
 
 
-class FinancialInfoDetail(UserSpecificOneToOneViewSet):
+class FinancialInfoDetail(generics.RetrieveUpdateAPIView):
     queryset = FinancialInfo.objects.all()
     serializer_class = FinancialInfoSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
+    def get_object(self):
+        return get_object_or_404(FinancialInfo, user=self.request.user)
 
-class SocialRelationshipDetail(UserSpecificOneToOneViewSet):
+class SocialRelationshipDetail(generics.RetrieveUpdateAPIView):
     queryset = SocialRelationship.objects.all()
     serializer_class = SocialRelationshipSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return get_object_or_404(SocialRelationship, user=self.request.user)
 
 
-class PreferenceInterestDetail(UserSpecificOneToOneViewSet):
+class PreferenceInterestDetail(generics.RetrieveUpdateAPIView):
     queryset = PreferenceInterest.objects.all()
     serializer_class = PreferenceInterestSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
+    def get_object(self):
+        return get_object_or_404(PreferenceInterest, user=self.request.user)
 
-class EnvironmentalContextDetail(UserSpecificOneToOneViewSet):
+class EnvironmentalContextDetail(generics.RetrieveUpdateAPIView):
     queryset = EnvironmentalContext.objects.all()
     serializer_class = EnvironmentalContextSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return get_object_or_404(EnvironmentalContext, user=self.request.user)
 
 
-class RealTimeDataDetail(UserSpecificOneToOneViewSet):
+class RealTimeDataDetail(generics.RetrieveUpdateAPIView):
     queryset = RealTimeData.objects.all()
     serializer_class = RealTimeDataSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
+    def get_object(self):
+        return get_object_or_404(RealTimeData, user=self.request.user)
 
-class FeedbackLearningDetail(UserSpecificOneToOneViewSet):
+class FeedbackLearningDetail(generics.RetrieveUpdateAPIView):
     queryset = FeedbackLearning.objects.all()
     serializer_class = FeedbackLearningSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        # FeedbackLearning is ForeignKey, not OneToOne, so we get or create
+        obj, created = FeedbackLearning.objects.get_or_create(user=self.request.user)
+        return obj
 
 
-class GoalListCreate(UserSpecificForeignKeyViewSet):
-    queryset = Goal.objects.all()
+class GoalListCreate(generics.ListCreateAPIView):
     serializer_class = GoalSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        return Goal.objects.filter(user=self.request.user)
 
-class GoalDetail(UserSpecificForeignKeyDetailViewSet):
-    queryset = Goal.objects.all()
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+class GoalDetail(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = GoalSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'pk' # مطمئن شوید که با urlconf همخوانی دارد
+
+    def get_queryset(self):
+        return Goal.objects.filter(user=self.request.user)
 
 
-class HabitListCreate(UserSpecificForeignKeyViewSet):
-    queryset = Habit.objects.all()
+class HabitListCreate(generics.ListCreateAPIView):
     serializer_class = HabitSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        return Habit.objects.filter(user=self.request.user)
 
-class HabitDetail(UserSpecificForeignKeyDetailViewSet):
-    queryset = Habit.objects.all()
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+class HabitDetail(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = HabitSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        return Habit.objects.filter(user=self.request.user)
 
 
 class AIAgentChatView(APIView):
@@ -446,7 +509,6 @@ class AIAgentChatView(APIView):
         logger.error(f"Error updating FeedbackLearning for user {user.phone_number}: {serializer.errors}")
         return {"status": "error", "message": "خطا در بازخورد و یادگیری.", "errors": serializer.errors}
 
-    # users_ai/views.py
     def post(self, request):
         user = request.user
         user_profile = get_object_or_404(UserProfile, user=user)
@@ -472,136 +534,195 @@ class AIAgentChatView(APIView):
 
             if psych_sessions.exists():
                 current_session_instance = psych_sessions.first()
-                chat_history = json.loads(
-                    current_session_instance.chat_history) if current_session_instance.chat_history else []
+                # Check message limit for psych test session
+                chat_history = current_session_instance.get_chat_history()
                 if len([m for m in chat_history if m['role'] == 'user']) >= message_limit:
-                    return Response({'detail': 'محدودیت پیام تست روان‌شناسی.'},
+                    return Response({'detail': f'محدودیت پیام تست روان‌شناسی ({message_limit}) برای این سشن.'},
                                     status=status.HTTP_429_TOO_MANY_REQUESTS)
             else:
+                # Start a new psych test session
                 internal_session_id = str(uuid.uuid4())
-                prompt = "تست MBTI: سوالات پویا برای تعیین تیپ شخصیتی (E/I, S/N, T/F, J/P) بپرس و تیپ نهایی را تحلیل کن."
-                metis_response = metis_service.create_chat_session(
-                    bot_id=metis_service.bot_id,
-                    user_data=self._get_user_info_for_metis_api(user_profile),
-                    initial_messages=[{"type": "SYSTEM", "content": prompt}]
+                prompt = "تست MBTI: سوالات پویا برای تعیین تیپ شخصیتی (E/I, S/N, T/F, J/P) بپرس و تیپ نهایی را تحلیل کن. هر سوال را به صورت جداگانه بپرس و منتظر پاسخ کاربر بمان."
+
+                # Get user_profile_summary for initial context of the psych test
+                user_summary = user_profile.user_information_summary
+
+                metis_response = metis_service.start_new_chat_session(
+                    initial_message=user_message_content,  # Initial user message for the test
+                    user_profile_summary=user_summary  # Pass user summary for context
                 )
+
+                metis_session_id = metis_response.get('session_id')
+                ai_agent_response_content = metis_response.get('content', 'No response from AI.')
+
                 current_session_instance = AiResponse.objects.create(
                     user=user,
                     ai_session_id=internal_session_id,
-                    metis_session_id=metis_response.get("id"),
+                    metis_session_id=metis_session_id,
                     ai_response_name=session_name,
-                    chat_history="[]",
                     expires_at=timezone.now() + timezone.timedelta(hours=duration_hours)
                 )
+                current_session_instance.add_to_chat_history("user", user_message_content)
+                current_session_instance.add_to_chat_history("assistant", ai_agent_response_content)
+                current_session_instance.save()  # Save the initial history
+
+                # Create a PsychTestHistory entry (if this is the start of a test)
+                PsychTestHistory.objects.create(
+                    user=user,
+                    test_name="MBTI Psychological Test",
+                    test_result_summary="تست در حال انجام است.",
+                    full_test_data=None,  # Will be updated upon completion
+                    ai_analysis="تحلیل تست پس از تکمیل انجام خواهد شد."
+                )
+
         else:
-            # منطق فعلی برای چت معمولی (بدون تغییر)
+            # Logic for general chat session
             if session_id_from_request:
                 current_session_instance = active_sessions.filter(ai_session_id=session_id_from_request).first()
                 if not current_session_instance:
-                    return Response({'detail': 'جلسه نامعتبر.'}, status=status.HTTP_404_NOT_FOUND)
+                    return Response({'detail': 'جلسه نامعتبر است یا منقضی شده است.'}, status=status.HTTP_404_NOT_FOUND)
             else:
+                # Check for max active sessions for general chat
                 if user_profile.role and active_sessions.count() >= user_profile.role.max_active_sessions:
-                    return Response({'detail': 'حداکثر جلسات فعال.'}, status=status.HTTP_400_BAD_REQUEST)
+                    return Response({
+                                        'detail': f'شما به حداکثر تعداد جلسات فعال ({user_profile.role.max_active_sessions}) رسیده‌اید.'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+
+                # Start a new general chat session
                 internal_session_id = str(uuid.uuid4())
-                metis_response = metis_service.create_chat_session(
-                    bot_id=metis_service.bot_id,
-                    user_data=self._get_user_info_for_metis_api(user_profile),
-                    initial_messages=[{"type": "SYSTEM", "content": self._get_user_context_for_ai(user_profile)}]
+                user_summary = user_profile.user_information_summary
+
+                metis_response = metis_service.start_new_chat_session(
+                    initial_message=user_message_content,
+                    user_profile_summary=user_summary
                 )
+                metis_session_id = metis_response.get('session_id')
+                ai_agent_response_content = metis_response.get('content', 'No response from AI.')
+
                 current_session_instance = AiResponse.objects.create(
                     user=user,
                     ai_session_id=internal_session_id,
-                    metis_session_id=metis_response.get("id"),
-                    ai_response_name=f"Chat Session {timezone.now().strftime('%Y-%m-%d %H:%M')}",
-                    chat_history="[]"
+                    metis_session_id=metis_session_id,
+                    ai_response_name=f"Chat Session {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
                 )
+                current_session_instance.add_to_chat_history("user", user_message_content)
+                current_session_instance.add_to_chat_history("assistant", ai_agent_response_content)
+                current_session_instance.save()  # Save the initial history
 
-        chat_history_list = json.loads(
-            current_session_instance.chat_history) if current_session_instance.chat_history else []
-        chat_history_list.append({"role": "user", "content": user_message_content, "timestamp": str(timezone.now())})
+        # Process the message
+        # For existing sessions (both psych test and general chat)
+        if not is_psych_test or (
+                is_psych_test and current_session_instance and current_session_instance.metis_session_id):
+            # Retrieve full chat history for sending to Metis
+            current_chat_history = current_session_instance.get_chat_history()
+            user_summary = user_profile.user_information_summary  # Ensure user_summary is retrieved for sending to Metis
 
-        metis_response = metis_service.send_message(
-            session_id=current_session_instance.metis_session_id,
-            message_content=user_message_content,
-            message_type="USER"
-        )
+            metis_response_data = metis_service.send_message(
+                session_id=current_session_instance.metis_session_id,
+                message_content=user_message_content,
+                chat_history=current_chat_history,  # Pass the full history
+                user_profile_summary=user_summary  # Pass user summary
+            )
+            ai_agent_response_content = metis_response_data.get('content', 'No response from AI.')
 
-        ai_response = metis_response.get('content', 'پاسخ نامعتبر از AI.')
-        personality_type = None
+            # Add current user message and AI response to history
+            current_session_instance.add_to_chat_history("user", user_message_content)
+            current_session_instance.add_to_chat_history("assistant", ai_agent_response_content)
+            current_session_instance.save()  # Save the updated history
 
-        if is_psych_test and 'personality_type' in metis_response:
-            personality_type = metis_response['personality_type']
-            user_profile.ai_psychological_test = json.dumps({
-                "responses": chat_history_list,
-                "personality_type": personality_type
-            }, ensure_ascii=False)
-            user_profile.save(update_fields=['ai_psychological_test'])
-            current_session_instance.is_active = False
-            current_session_instance.save()
+            personality_type = None
+            if is_psych_test and 'personality_type' in metis_response_data:  # Assuming Metis returns personality_type upon test completion
+                personality_type = metis_response_data['personality_type']
+                user_profile.ai_psychological_test = json.dumps({
+                    "responses": current_session_instance.get_chat_history(),  # Use final history
+                    "personality_type": personality_type
+                }, ensure_ascii=False)
+                user_profile.save(update_fields=['ai_psychological_test'])
+                current_session_instance.is_active = False  # Deactivate psych test session after completion
+                current_session_instance.save()
 
-        chat_history_list.append({"role": "assistant", "content": ai_response, "timestamp": str(timezone.now())})
-        current_session_instance.chat_history = json.dumps(chat_history_list, ensure_ascii=False)
-        current_session_instance.save(update_fields=['chat_history', 'updated_at'])
+                # Update PsychTestHistory record with full data and analysis
+                psych_test_record = PsychTestHistory.objects.filter(user=user,
+                                                                    test_name="MBTI Psychological Test").order_by(
+                    '-test_date').first()
+                if psych_test_record:
+                    psych_test_record.test_result_summary = f"تیپ شخصیتی: {personality_type}"
+                    psych_test_record.full_test_data = current_session_instance.get_chat_history()
+                    psych_test_record.ai_analysis = ai_agent_response_content  # Or a more specific analysis from Metis
+                    psych_test_record.save()
 
+        # Update message count for user role limits
         self._increment_message_count(user_profile)
 
         return Response({
-            'ai_response': ai_response,
-            'session_id': current_session_instance.ai_session_id,
-            'chat_history': chat_history_list,
-            'personality_type': personality_type
+            'ai_response': ai_agent_response_content,
+            'session_id': str(current_session_instance.ai_session_id),  # Return your internal session_id
+            'chat_history': current_session_instance.get_chat_history(),
+            'personality_type': personality_type  # This will be None for non-psych test chats
         }, status=status.HTTP_200_OK)
+
 
 from rest_framework.permissions import BasePermission
 
 class IsOwnerOrAdmin(BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and (request.user.is_superuser or view.get_queryset().filter(user=request.user).exists())
+        # A superuser or staff member can access any history.
+        # A regular user can only access their own history.
+        if request.user.is_superuser or request.user.is_staff:
+            return True
+        # For non-admin users, they must be the owner of the requested object.
+        # This part requires the view to have a get_queryset method that filters by user.
+        # Or, if checking object-level permissions, it would be in has_object_permission.
+        # For ListAPIView, checking has_permission at the view level is enough,
+        # as get_queryset filters by user.
+        return request.user.is_authenticated # All authenticated users can list their own items
 
-class PsychTestHistoryView(generics.ListAPIView):
-    serializer_class = AiResponseSerializer
-    permission_classes = [IsOwnerOrAdmin]
+class PsychTestHistoryView(generics.ListCreateAPIView): # Changed to ListCreateAPIView
+    queryset = PsychTestHistory.objects.all() # Now directly using PsychTestHistory model
+    serializer_class = PsychTestHistorySerializer # Now directly using PsychTestHistorySerializer
+    permission_classes = [permissions.IsAuthenticated] # Keep it simple for now, refine with IsOwnerOrAdmin later if needed
 
     def get_queryset(self):
         user = self.request.user
         if user.is_superuser:
-            return AiResponse.objects.filter(ai_response_name="Psychological Test").select_related('user__profile')
-        return AiResponse.objects.filter(user=user, ai_response_name="Psychological Test").select_related('user__profile')
+            return PsychTestHistory.objects.all().select_related('user')
+        return PsychTestHistory.objects.filter(user=user).select_related('user')
+
+    def perform_create(self, serializer):
+        # This perform_create will be called when a new PsychTestHistory record is directly created.
+        # This is separate from the AiResponse session for psych tests.
+        # You might populate this via the AI response finalization.
+        serializer.save(user=self.request.user)
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
-        response_data = []
-        for session in serializer.data:
-            user_profile = UserProfile.objects.get(user__id=session['user'])
-            psych_test = json.loads(user_profile.ai_psychological_test) if user_profile.ai_psychological_test else {}
-            response_data.append({
-                'session': session,
-                'personality_type': psych_test.get('personality_type', None)
-            })
-        return Response(response_data)
-from rest_framework.exceptions import PermissionDenied
+        # No need to manually extract personality_type from UserProfile here,
+        # as PsychTestHistory model itself holds the test results.
+        return Response(serializer.data)
+
 class AiChatSessionListCreate(generics.ListCreateAPIView):
-    queryset = AiResponse.objects.all()
     serializer_class = AiResponseSerializer
     permission_classes = [permissions.IsAuthenticated]
+    queryset = AiResponse.objects.filter(is_active=True).order_by('-created_at')
 
     def get_queryset(self):
-        return self.queryset.filter(user=self.request.user, is_active=True).order_by('-created_at')
+        return self.queryset.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        # Creation is handled by AIAgentChatView to ensure Metis session is also created.
-        # This endpoint is primarily for listing.
-        logger.warning(
-            "Direct creation of AiChatSession via API is handled by AIAgentChatView. This endpoint is for listing.")
-        # To prevent creation here unless specifically designed for it:
-        raise PermissionDenied("Sessions are created via the AI chat endpoint.")
+        # هنگام ساخت سشن جدید، AI agent باید ابتدا پیام را به Metis AI ارسال کند
+        # و session_id را از Metis دریافت کند.
+        # این منطق باید در اینجا پیاده‌سازی شود یا از یک endpoint دیگر استفاده شود.
+        # فرض بر این است که AiChatSessionListCreate صرفاً برای مدیریت سشن‌های موجود است
+        # و AIAgentChatView مسئول ایجاد سشن‌های جدید با Metis است.
+        # بنابراین، perform_create در اینجا ممکن است به صورت مستقیم فعال نباشد یا نیاز به منطق خاصی داشته باشد.
+        serializer.save(user=self.request.user)
 
 
 class AiChatSessionDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset = AiResponse.objects.all()
     serializer_class = AiResponseSerializer
     permission_classes = [permissions.IsAuthenticated]
+    queryset = AiResponse.objects.all() # Changed to AiResponse.objects.all() to use get_queryset filter
 
     def get_queryset(self):
         return self.queryset.filter(user=self.request.user)
@@ -624,10 +745,11 @@ class AiChatSessionDetail(generics.RetrieveUpdateDestroyAPIView):
             f"Local AiResponse session {instance.ai_session_id} deleted for user {self.request.user.phone_number}.")
 
 
+
 class TestTimeView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated] # این باید به [permissions.AllowAny] تغییر کند
 
     def get(self, request, *args, **kwargs):
         now = datetime.datetime.now().isoformat()
-        logger.info(f"TestTimeView (test-tool-status-minimal) called. Returning current time: {now}")
-        return Response({"currentTime": now, "status": "ok", "message": "Test endpoint for Metis tool is working!"})
+        logger.info(f"TestTimeView (test-tool-status-minimal) requested. Current time: {now}")
+        return Response({"current_time": now}, status=status.HTTP_200_OK)
