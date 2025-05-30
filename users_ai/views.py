@@ -774,29 +774,36 @@ class AIAgentChatView(APIView):
         """
         Aggregates relevant user information into a dictionary suitable for Metis AI's 'user' field.
         This includes basic profile, and potentially summarized data from other related models.
+        Ensures no None or empty string values are present in the final dictionary.
         """
-        user_info = {
+        user_info_raw = {
             "id": str(user_profile.user.id),
             "phone_number": user_profile.user.phone_number,
+            "first_name": user_profile.first_name,
+            "last_name": user_profile.last_name,
+            "age": user_profile.age,
+            "gender": user_profile.gender,
+            "nationality": user_profile.nationality,
+            "location": user_profile.location,
+            "marital_status": user_profile.marital_status,
+            "languages": user_profile.languages,
+            "cultural_background": user_profile.cultural_background,
+            "summary": user_profile.user_information_summary,  # این فیلد ممکن است None باشد
         }
-        if user_profile.first_name: user_info["first_name"] = user_profile.first_name
-        if user_profile.last_name: user_info["last_name"] = user_profile.last_name
-        if user_profile.age is not None: user_info["age"] = user_profile.age
-        if user_profile.gender: user_info["gender"] = user_profile.gender
-        if user_profile.nationality: user_info["nationality"] = user_profile.nationality
-        if user_profile.location: user_info["location"] = user_profile.location
-        if user_profile.marital_status: user_info["marital_status"] = user_profile.marital_status
-        if user_profile.languages: user_info["languages"] = user_profile.languages
-        if user_profile.cultural_background: user_info["cultural_background"] = user_profile.cultural_background
 
-        # Add summary from user_information_summary if available
-        if user_profile.user_information_summary:
-            user_info["summary"] = user_profile.user_information_summary
+        # حذف کلیدهایی که مقدارشان None یا رشته خالی است از دیکشنری اصلی user_info
+        # این کار اطمینان می‌دهد که فقط فیلدهای با مقدار واقعی ارسال می‌شوند.
+        user_info = {k: v for k, v in user_info_raw.items() if v is not None and v != ''}
 
-        # Add data from other related models if relevant for direct AI context
+        # اگر سن کاربر 0 باشد (که یک مقدار معتبر است)، باید آن را مجدداً اضافه کنیم
+        # چون شرط `v != ''` آن را حذف می‌کند اگر age یک عدد صفر باشد.
+        if user_profile.age is not None:
+            user_info['age'] = user_profile.age
+
+        # افزودن داده‌ها از مدل‌های مرتبط (اگر وجود دارند و خالی نیستند)
         try:
             health_record = user_profile.user.health_record
-            user_info["health_data"] = {
+            health_data_raw = {
                 "medical_history": health_record.medical_history,
                 "chronic_conditions": health_record.chronic_conditions,
                 "allergies": health_record.allergies,
@@ -805,15 +812,16 @@ class AIAgentChatView(APIView):
                 "mental_health_status": health_record.mental_health_status,
                 "medications": health_record.medications,
             }
-            user_info["health_data"] = {k: v for k, v in user_info["health_data"].items() if v is not None and v != ''}
-            if not user_info["health_data"]:
-                user_info.pop("health_data")
+            # فیلتر کردن مقادیر None یا رشته خالی از دیکشنری health_data
+            health_data = {k: v for k, v in health_data_raw.items() if v is not None and v != ''}
+            if health_data:  # فقط در صورتی اضافه کن که خالی نباشد
+                user_info["health_data"] = health_data
         except HealthRecord.DoesNotExist:
             pass
 
         try:
             psych_profile = user_profile.user.psychological_profile
-            user_info["psychological_profile_data"] = {
+            psych_data_raw = {
                 "personality_type": psych_profile.personality_type,
                 "core_values": psych_profile.core_values,
                 "motivations": psych_profile.motivations,
@@ -823,12 +831,14 @@ class AIAgentChatView(APIView):
                 "preferred_communication": psych_profile.preferred_communication,
                 "resilience_level": psych_profile.resilience_level,
             }
-            user_info["psychological_profile_data"] = {k: v for k, v in user_info["psychological_profile_data"].items()
-                                                       if v is not None and v != ''}
-            if not user_info["psychological_profile_data"]:
-                user_info.pop("psychological_profile_data")
+            # فیلتر کردن مقادیر None یا رشته خالی از دیکشنری psych_data
+            psych_data = {k: v for k, v in psych_data_raw.items() if v is not None and v != ''}
+            if psych_data:  # فقط در صورتی اضافه کن که خالی نباشد
+                user_info["psychological_profile_data"] = psych_data
         except PsychologicalProfile.DoesNotExist:
             pass
+
+        # می‌توانید بلوک‌های try-except مشابهی برای سایر مدل‌های مرتبط (CareerEducation, FinancialInfo و غیره) اضافه کنید.
 
         logger.debug(f"Generated user_info for Metis API: {json.dumps(user_info, ensure_ascii=False)[:500]}...")
         return user_info
