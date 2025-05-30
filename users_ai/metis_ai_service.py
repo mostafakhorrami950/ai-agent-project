@@ -37,8 +37,9 @@ class MetisAIService:
             logger.debug(f"[_make_request] Attempting request to {method} {url}")
             logger.debug(f"[_make_request] Request Headers: {self.headers}")
             if json_data:
-                logger.debug(
-                    f"[_make_request] Request JSON Data: {json.dumps(json_data, indent=2, ensure_ascii=False)}")
+                # !!! این خط JSON کامل ارسالی را در لاگ‌ها نمایش می‌دهد.
+                # در محیط Production، از لاگ کردن اطلاعات حساس خودداری کنید.
+                logger.info(f"[_make_request] !!! JSON ارسالی: {json.dumps(json_data, indent=2, ensure_ascii=False)}")
             if params:
                 logger.debug(f"[_make_request] Request Params: {params}")
 
