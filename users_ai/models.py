@@ -8,7 +8,6 @@ from datetime import timedelta  # Import timedelta
 import uuid  # <--- این خط را اضافه کنید
 import logging # <--- این خط را اضافه کنید
 
-from update_metis_functions import logger
 logger = logging.getLogger(__name__)
 
 # کلاس مدیریت کاربر سفارشی
