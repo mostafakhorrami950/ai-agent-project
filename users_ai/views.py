@@ -1,4 +1,3 @@
-# views.py
 # users_ai/views.py
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
@@ -10,30 +9,179 @@ from django.utils import timezone
 import uuid
 import json
 import logging
+import datetime
 from django.db import transaction
-import datetime  # این ایمپورت در فایل شما بود، اگر لازم نیست می‌توانید حذف کنید
-# import requests # این ایمپورت در فایل شما بود، اگر لازم نیست می‌توانید حذف کنید
+from .permissions import IsMetisToolCallback  # مطمئن شوید این ایمپورت وجود دارد
 
 # Import your models
 from .models import (
     UserProfile, HealthRecord, PsychologicalProfile, CareerEducation,
     FinancialInfo, SocialRelationship, PreferenceInterest, EnvironmentalContext,
-    RealTimeData, FeedbackLearning, Goal, Habit, AiResponse, UserRole, PsychTestHistory # اضافه کردن PsychTestHistory
+    RealTimeData, FeedbackLearning, Goal, Habit, AiResponse, UserRole, PsychTestHistory
 )
 # Import your serializers
 from .serializers import (
     UserSerializer, UserProfileSerializer, HealthRecordSerializer, PsychologicalProfileSerializer,
     CareerEducationSerializer, FinancialInfoSerializer, SocialRelationshipSerializer,
     PreferenceInterestSerializer, EnvironmentalContextSerializer, RealTimeDataSerializer,
-    FeedbackLearningSerializer, GoalSerializer, HabitSerializer, AiResponseSerializer, PsychTestHistorySerializer # اضافه کردن PsychTestHistorySerializer
+    FeedbackLearningSerializer, GoalSerializer, HabitSerializer, AiResponseSerializer, PsychTestHistorySerializer
 )
 # Import your Metis AI service
 from .metis_ai_service import MetisAIService
-from .permissions import IsMetisToolCallback # مطمئن شوید این ایمپورت وجود دارد
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
+
+class RegisterUserView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def perform_create(self, serializer):
+        user = serializer.save()
+        # ایجاد UserProfile برای کاربر جدید
+        UserProfile.objects.create(user=user)
+        logger.info(f"User {user.phone_number} registered successfully and UserProfile created.")
+
+
+class LoginUserView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        logger.debug(f"Received POST request to LoginUserView: {request.data}")
+        phone_number = request.data.get('phone_number')
+        password = request.data.get('password')
+
+        if not phone_number or not password:
+            return Response({'detail': 'شماره موبایل و رمز عبور الزامی است.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(phone_number=phone_number).first()
+
+        if user is None or not user.check_password(password):
+            logger.warning(f"Invalid login attempt for phone_number: {phone_number}")
+            return Response({'detail': 'شماره موبایل یا رمز عبور نامعتبر است.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if not user.is_active:
+            logger.warning(f"Login attempt for inactive user: {phone_number}")
+            return Response({'detail': 'حساب کاربری شما غیرفعال است.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        refresh = RefreshToken.for_user(user)
+        logger.info(f"User {phone_number} logged in successfully.")
+        return Response({
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'user_id': user.id,
+            'phone_number': user.phone_number
+        }, status=status.HTTP_200_OK)
+
+
+class UserSpecificOneToOneViewSet(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        if not hasattr(self, 'queryset'):
+            raise AttributeError("queryset attribute must be set on the child class.")
+        return get_object_or_404(self.queryset, user=self.request.user)
+
+
+class UserSpecificForeignKeyViewSet(generics.ListCreateAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        if not hasattr(self, 'queryset'):
+            raise AttributeError("queryset attribute must be set on the child class.")
+        return self.queryset.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class UserSpecificForeignKeyDetailViewSet(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        if not hasattr(self, 'queryset'):
+            raise AttributeError("queryset attribute must be set on the child class.")
+        return self.queryset.filter(user=self.request.user)
+
+
+class UserProfileDetail(UserSpecificOneToOneViewSet):
+    queryset = UserProfile.objects.all()
+    serializer_class = UserProfileSerializer
+
+
+class HealthRecordDetail(UserSpecificOneToOneViewSet):
+    queryset = HealthRecord.objects.all()
+    serializer_class = HealthRecordSerializer
+
+
+class PsychologicalProfileDetail(UserSpecificOneToOneViewSet):
+    queryset = PsychologicalProfile.objects.all()
+    serializer_class = PsychologicalProfileSerializer
+
+
+class CareerEducationDetail(UserSpecificOneToOneViewSet):
+    queryset = CareerEducation.objects.all()
+    serializer_class = CareerEducationSerializer
+
+
+class FinancialInfoDetail(UserSpecificOneToOneViewSet):
+    queryset = FinancialInfo.objects.all()
+    serializer_class = FinancialInfoSerializer
+
+
+class SocialRelationshipDetail(UserSpecificOneToOneViewSet):
+    queryset = SocialRelationship.objects.all()
+    serializer_class = SocialRelationshipSerializer
+
+
+class PreferenceInterestDetail(UserSpecificOneToOneViewSet):
+    queryset = PreferenceInterest.objects.all()
+    serializer_class = PreferenceInterestSerializer
+
+
+class EnvironmentalContextDetail(UserSpecificOneToOneViewSet):
+    queryset = EnvironmentalContext.objects.all()
+    serializer_class = EnvironmentalContextSerializer
+
+
+class RealTimeDataDetail(UserSpecificOneToOneViewSet):
+    queryset = RealTimeData.objects.all()
+    serializer_class = RealTimeDataSerializer
+
+
+class FeedbackLearningDetail(UserSpecificOneToOneViewSet):
+    queryset = FeedbackLearning.objects.all()
+    serializer_class = FeedbackLearningSerializer
+
+
+class GoalListCreate(UserSpecificForeignKeyViewSet):
+    queryset = Goal.objects.all()
+    serializer_class = GoalSerializer
+
+
+class GoalDetail(UserSpecificForeignKeyDetailViewSet):
+    queryset = Goal.objects.all()
+    serializer_class = GoalSerializer
+
+
+class HabitListCreate(UserSpecificForeignKeyViewSet):
+    queryset = Habit.objects.all()
+    serializer_class = HabitSerializer
+
+
+class HabitDetail(UserSpecificForeignKeyDetailViewSet):
+    queryset = Habit.objects.all()
+    serializer_class = HabitSerializer
+
+
+# ----------------------------------------------------
+# New API Views for Metis AI Tool Callbacks
+# These views will be called by Metis AI directly when it decides to use a tool.
+# They will use the IsMetisToolCallback permission.
+# Each tool needs to receive the `user_id` as part of its payload from Metis AI.
+# ----------------------------------------------------
 
 class ToolUpdateUserProfileDetailsView(APIView):
     permission_classes = [IsMetisToolCallback]
@@ -334,36 +482,6 @@ class ToolUpdateFeedbackLearningView(APIView):
             logger.error(f"Tool: Error updating FeedbackLearning for user {user.phone_number}: {serializer.errors}")
             return Response({"status": "error", "message": "خطا در بازخورد و یادگیری.", "errors": serializer.errors},
                             status=status.HTTP_400_BAD_REQUEST)
-
-
-class ToolUpdateUserProfileDetailsView(APIView):
-    permission_classes = [IsMetisToolCallback]
-    http_method_names = ['patch']
-
-    def patch(self, request, *args, **kwargs):
-        user_id = request.data.get('user_id')
-        if not user_id:
-            logger.error("Tool call for update_user_profile_details received without user_id.")
-            return Response({"error": "User ID is required for tool calls."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            logger.error(f"User with ID {user_id} not found for tool call.")
-            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        profile = get_object_or_404(UserProfile, user=user)
-        serializer = UserProfileSerializer(profile, data=request.data, partial=True, context={'request': request})
-        if serializer.is_valid():
-            serializer.save()
-            logger.info(f"Tool: UserProfile details updated for user {user.phone_number}.")
-            return Response(
-                {"status": "success", "message": f"جزئیات پروفایل کاربر {user.phone_number} با موفقیت به‌روز شد.",
-                 "data": serializer.data}, status=status.HTTP_200_OK)
-        else:
-            logger.error(f"Tool: Error updating user profile details for {user.phone_number}: {serializer.errors}")
-            return Response(
-                {"status": "error", "message": "خطا در به‌روزرسانی جزئیات پروفایل.", "errors": serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST)
 
 
 class ToolCreateGoalView(APIView):
@@ -847,7 +965,7 @@ class AIAgentChatView(APIView):
                     logger.info(f"Starting new Metis AI session for user {user.phone_number}")
                     metis_response = metis_service.create_chat_session(
                         bot_id=metis_service.bot_id,
-                        user_data=self._get_user_info_for_metis_api(user_profile),
+                        user_data=self._get_user_info_for_metis_api(user_profile),  # Structured user data
                         initial_messages=initial_metis_messages,
                         functions=all_tools_schemas  # Passing tools for Function Calling
                     )
@@ -879,25 +997,31 @@ class AIAgentChatView(APIView):
                         )
 
                 # 2. ادامه سشن موجود و ارسال پیام به Metis AI
-                else:  # current_session_instance already exists from session_id_from_request
-                    logger.info(
-                        f"Sending message to Metis AI session {current_session_instance.metis_session_id} for user {user.phone_number}")
+                # This block runs whether it's a new session or continuing one,
+                # to send the *current* user message to Metis AI.
+                # The previous `if not ai_response_obj:` vs `else:` logic was a bit redundant here.
+                # Now the logic for initial session creation is separate from the `send_message` call.
 
-                    # NOTE: Metis AI send_message (from docs) takes `content` and `type`.
-                    # It does NOT take `chat_history` or `functions`.
-                    # This means Metis AI is expected to manage context and tools internally per session.
-                    metis_response_data = metis_service.send_message(
-                        session_id=current_session_instance.metis_session_id,
-                        content=user_message_content,
-                        message_type="USER"
-                    )
-                    metis_ai_response_content = metis_response_data.get('content', 'No response from AI.')
+                # NOTE: Metis AI send_message (from docs) takes `content` and `type`.
+                # It does NOT take `chat_history` or `functions`.
+                # This means Metis AI is expected to manage context and tools internally per session.
 
-                    current_session_instance.add_to_chat_history("user", user_message_content)
-                    current_session_instance.add_to_chat_history("assistant", metis_ai_response_content)
-                    current_session_instance.save()
+                logger.info(
+                    f"Sending message to Metis AI session {current_session_instance.metis_session_id} for user {user.phone_number}")
+
+                metis_response_data = metis_service.send_message(
+                    session_id=current_session_instance.metis_session_id,
+                    content=user_message_content,
+                    message_type="USER"
+                )
+                metis_ai_response_content = metis_response_data.get('content', 'No response from AI.')
+
+                current_session_instance.add_to_chat_history("user", user_message_content)
+                current_session_instance.add_to_chat_history("assistant", metis_ai_response_content)
+                current_session_instance.save()
 
                 personality_type = None
+                # Check for personality_type in Metis AI response, likely after a psych test completion
                 if is_psych_test and 'personality_type' in metis_ai_response_content:  # Assuming personality_type might be in content for psych test
                     try:
                         # Attempt to parse content as JSON if it's expected to contain structured data
