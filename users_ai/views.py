@@ -955,17 +955,18 @@ class AIAgentChatView(APIView):
 
                     # Prepare initial messages for Metis AI
                     initial_metis_messages = []
+                    # Changed from "SYSTEM" to "USER" as per Metis AI docs/examples for initialMessages type.
                     initial_metis_messages.append(
-                        {"type": "SYSTEM", "content": self._get_user_context_for_ai(user_profile)})
+                        {"type": "USER", "content": self._get_user_context_for_ai(user_profile)})
                     initial_metis_messages.append({"type": "USER", "content": user_message_content})
 
                     # Get all tool schemas to pass to Metis AI when creating a session
-                    all_tools_schemas = metis_service.get_tool_schemas_for_metis_bot()  # This method will be called
+                    all_tools_schemas = metis_service.get_tool_schemas_for_metis_bot()
 
                     logger.info(f"Starting new Metis AI session for user {user.phone_number}")
                     metis_response = metis_service.create_chat_session(
                         bot_id=metis_service.bot_id,
-                        user_data=self._get_user_info_for_metis_api(user_profile),  # Structured user data
+                        user_data=self._get_user_info_for_metis_api(user_profile),
                         initial_messages=initial_metis_messages,
                         functions=all_tools_schemas  # Passing tools for Function Calling
                     )
@@ -997,15 +998,6 @@ class AIAgentChatView(APIView):
                         )
 
                 # 2. ادامه سشن موجود و ارسال پیام به Metis AI
-                # This block runs whether it's a new session or continuing one,
-                # to send the *current* user message to Metis AI.
-                # The previous `if not ai_response_obj:` vs `else:` logic was a bit redundant here.
-                # Now the logic for initial session creation is separate from the `send_message` call.
-
-                # NOTE: Metis AI send_message (from docs) takes `content` and `type`.
-                # It does NOT take `chat_history` or `functions`.
-                # This means Metis AI is expected to manage context and tools internally per session.
-
                 logger.info(
                     f"Sending message to Metis AI session {current_session_instance.metis_session_id} for user {user.phone_number}")
 
@@ -1022,14 +1014,13 @@ class AIAgentChatView(APIView):
 
                 personality_type = None
                 # Check for personality_type in Metis AI response, likely after a psych test completion
-                if is_psych_test and 'personality_type' in metis_ai_response_content:  # Assuming personality_type might be in content for psych test
+                if is_psych_test and 'personality_type' in metis_ai_response_content:
                     try:
-                        # Attempt to parse content as JSON if it's expected to contain structured data
                         parsed_content = json.loads(metis_ai_response_content)
                         if 'personality_type' in parsed_content:
                             personality_type = parsed_content['personality_type']
                     except json.JSONDecodeError:
-                        pass  # Not JSON, just plain text response for now.
+                        pass
 
                     if personality_type:
                         user_profile.ai_psychological_test = json.dumps({
