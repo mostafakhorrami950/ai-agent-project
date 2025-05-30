@@ -767,78 +767,73 @@ class AIAgentChatView(APIView):
         user_profile.messages_sent_today += 1
         user_profile.save(update_fields=['messages_sent_today', 'last_message_date'])
 
-    def _get_user_info_for_metis_api(self, user_profile):
+    def _get_user_context_for_ai(self, user_profile: UserProfile):
         """
-        Aggregates relevant user information into a dictionary suitable for Metis AI's 'user' field.
-        This includes basic profile, and potentially summarized data from other related models.
-        Ensures no None or empty string values are present in the final dictionary.
+        Aggregates various pieces of user information into a detailed system prompt.
+        This prompt acts as a detailed initial context for the AI, complementing structured user_data.
+        (این تابع بدون تغییر باقی می‌ماند و اطلاعات کامل کاربر را برای ارسال در initialMessages آماده می‌کند)
         """
-        user_info_raw = {
-            "id": str(user_profile.user.id),
-            "phone_number": user_profile.user.phone_number,
-            "first_name": user_profile.first_name,
-            "last_name": user_profile.last_name,
-            "age": user_profile.age,
-            "gender": user_profile.gender,
-            "nationality": user_profile.nationality,
-            "location": user_profile.location,
-            "marital_status": user_profile.marital_status,
-            "languages": user_profile.languages,
-            "cultural_background": user_profile.cultural_background,
-            "summary": user_profile.user_information_summary,  # این فیلد ممکن است None باشد
-        }
+        context_parts = []
 
-        # حذف کلیدهایی که مقدارشان None یا رشته خالی است از دیکشنری اصلی user_info
-        # این کار اطمینان می‌دهد که فقط فیلدهای با مقدار واقعی ارسال می‌شوند.
-        user_info = {k: v for k, v in user_info_raw.items() if v is not None and v != ''}
+        # Add basic profile info
+        profile_info = [
+            # f"شناسه کاربر: {user_profile.user.id}", # شناسه کاربر در user_obj بالا ارسال می‌شود
+            f"شماره موبایل کاربر فعلی: {user_profile.user.phone_number}"  # برای آگاهی AI از شماره کاربر در حال چت
+        ]
+        if user_profile.first_name: profile_info.append(f"نام: {user_profile.first_name}")
+        if user_profile.last_name: profile_info.append(f"نام خانوادگی: {user_profile.last_name}")
+        if user_profile.age is not None: profile_info.append(f"سن: {user_profile.age}")
+        if user_profile.gender: profile_info.append(f"جنسیت: {user_profile.gender}")
+        if user_profile.nationality: profile_info.append(f"ملیت: {user_profile.nationality}")
+        if user_profile.location: profile_info.append(f"مکان: {user_profile.location}")
+        if user_profile.marital_status: profile_info.append(f"وضعیت تأهل: {user_profile.marital_status}")
+        if user_profile.languages: context_parts.append(f"زبان‌ها: {user_profile.languages}")
+        if user_profile.cultural_background: context_parts.append(f"پیشینه فرهنگی: {user_profile.cultural_background}")
 
-        # اگر سن کاربر 0 باشد (که یک مقدار معتبر است)، باید آن را مجدداً اضافه کنیم
-        # چون شرط `v != ''` آن را حذف می‌کند اگر age یک عدد صفر باشد.
-        if user_profile.age is not None:
-            user_info['age'] = user_profile.age
+        if profile_info:
+            context_parts.append("اطلاعات پایه و هویتی کاربر:")  # عنوان مناسب‌تر
+            context_parts.extend([f"- {item}" for item in profile_info])
 
         # افزودن داده‌ها از مدل‌های مرتبط (اگر وجود دارند و خالی نیستند)
         try:
             health_record = user_profile.user.health_record
-            health_data_raw = {
-                "medical_history": health_record.medical_history,
-                "chronic_conditions": health_record.chronic_conditions,
-                "allergies": health_record.allergies,
-                "diet_type": health_record.diet_type,
-                "physical_activity_level": health_record.physical_activity_level,
-                "mental_health_status": health_record.mental_health_status,
-                "medications": health_record.medications,
-            }
-            # فیلتر کردن مقادیر None یا رشته خالی از دیکشنری health_data
-            health_data = {k: v for k, v in health_data_raw.items() if v is not None and v != ''}
-            if health_data:  # فقط در صورتی اضافه کن که خالی نباشد
-                user_info["health_data"] = health_data
-        except HealthRecord.DoesNotExist:
-            pass
+            health_details = []
+            if health_record.medical_history: health_details.append(
+                f"تاریخچه پزشکی: {health_record.medical_history}")  #
+            if health_record.chronic_conditions: health_details.append(
+                f"بیماری‌های مزمن: {health_record.chronic_conditions}")  #
+            if health_record.allergies: health_details.append(f"آلرژی‌ها: {health_record.allergies}")  #
+            if health_record.diet_type: health_details.append(f"رژیم غذایی: {health_record.diet_type}")  #
+            # ... سایر فیلدهای HealthRecord ...
+            if health_details:
+                context_parts.append("\nسوابق سلامتی:")
+                context_parts.extend([f"- {item}" for item in health_details])
+        except HealthRecord.DoesNotExist:  #
+            pass  # یا context_parts.append("\nسوابق سلامتی ثبت نشده است.")
 
         try:
-            psych_profile = user_profile.user.psychological_profile
-            psych_data_raw = {
-                "personality_type": psych_profile.personality_type,
-                "core_values": psych_profile.core_values,
-                "motivations": psych_profile.motivations,
-                "decision_making_style": psych_profile.decision_making_style,
-                "stress_response": psych_profile.stress_response,
-                "emotional_triggers": psych_profile.emotional_triggers,
-                "preferred_communication": psych_profile.preferred_communication,
-                "resilience_level": psych_profile.resilience_level,
-            }
-            # فیلتر کردن مقادیر None یا رشته خالی از دیکشنری psych_data
-            psych_data = {k: v for k, v in psych_data_raw.items() if v is not None and v != ''}
-            if psych_data:  # فقط در صورتی اضافه کن که خالی نباشد
-                user_info["psychological_profile_data"] = psych_data
-        except PsychologicalProfile.DoesNotExist:
-            pass
+            psych_profile = user_profile.user.psychological_profile  #
+            psych_details = []
+            if psych_profile.personality_type: psych_details.append(f"تیپ شخصیتی: {psych_profile.personality_type}")  #
+            if psych_profile.core_values: psych_details.append(f"ارزش‌های اصلی: {psych_profile.core_values}")  #
+            # ... سایر فیلدهای PsychologicalProfile ...
+            if psych_details:
+                context_parts.append("\nپروفایل روانشناختی:")
+                context_parts.extend([f"- {item}" for item in psych_details])
+        except PsychologicalProfile.DoesNotExist:  #
+            pass  # یا context_parts.append("\nپروفایل روانشناختی ثبت نشده است.")
 
-        # می‌توانید بلوک‌های try-except مشابهی برای سایر مدل‌های مرتبط (CareerEducation, FinancialInfo و غیره) اضافه کنید.
+        # خلاصه سایر جداول به همین ترتیب (CareerEducation, FinancialInfo, و غیره)
+        # ...
 
-        logger.debug(f"Generated user_info for Metis API: {json.dumps(user_info, ensure_ascii=False)[:500]}...")
-        return user_info
+        if user_profile.user_information_summary:  #
+            context_parts.append(
+                f"\nخلاصه جامع کاربر (تولید شده توسط AI یا خلاصه‌نویسی شده):\n{user_profile.user_information_summary}")  #
+
+        full_context = "\n\n".join(context_parts)  # استفاده از دو newline برای خوانایی بهتر
+        logger.debug(
+            f"Generated AI context for user {user_profile.user.phone_number}: {full_context[:500]}...")
+        return full_context
 
     def _get_user_context_for_ai(self, user_profile):
         """
@@ -973,9 +968,8 @@ class AIAgentChatView(APIView):
                     logger.info(f"Starting new Metis AI session for user {user.phone_number}")
                     metis_response = metis_service.create_chat_session(
                         bot_id=metis_service.bot_id,
-                        user_data=self._get_user_info_for_metis_api(user_profile),
-                        initial_messages=initial_metis_messages,
-                        functions=all_tools_schemas  # Passing tools for Function Calling
+                        user_data=self._get_user_info_for_metis_api(user_profile),  # این را در مرحله بعد اصلاح می‌کنیم
+                        initial_messages=initial_metis_messages
                     )
 
                     metis_session_id = metis_response.get('id')
