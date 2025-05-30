@@ -170,8 +170,10 @@ class MetisAIService:
             logger.warning(
                 "Using default DJANGO_API_BASE_URL. Ensure this is configured in settings.py for production.")
 
-        def create_arg(name, description, arg_type, required):  # enum_values حذف شده
-            arg = {"name": name, "description": description, "type": arg_type, "required": required}
+        # تغییر: description برای آرگومان‌ها حذف شد تا با محدودیت احتمالی Metis AI سازگار شود.
+        def create_arg(name, arg_type, required):  # description از اینجا حذف شد
+            arg = {"name": name, "type": arg_type, "required": required}
+            # arg["description"] = description # این خط دیگر لازم نیست
             return arg
 
         tools = []
@@ -182,14 +184,12 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/goals/create/",
             "method": "POST",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("goal_type", "نوع هدف (مثلاً شخصی، حرفه‌ای، مالی، سلامتی).", "STRING", True),
-                create_arg("description", "توضیح کامل هدف کاربر (مثلاً یادگیری زبان جدید).", "STRING", True),
-                create_arg("priority", "اولویت هدف (از 1 تا 5، 5 بالاترین اولویت).", "INTEGER", False),
-                # NUMBER به INTEGER تغییر یافت
-                create_arg("deadline", "تاریخ مهلت دستیابی به هدف در قالب Woche-MM-DD.", "STRING", False),
-                create_arg("progress", "درصد پیشرفت فعلی هدف (از 0.0 تا 100.0).", "FLOAT", False),
-                # NUMBER به FLOAT تغییر یافت
+                create_arg("user_id", "STRING", True),  # description حذف شد
+                create_arg("goal_type", "STRING", True),  # description حذف شد
+                create_arg("description", "STRING", True),  # description حذف شد
+                create_arg("priority", "INTEGER", False),  # NUMBER به INTEGER تغییر یافت
+                create_arg("deadline", "STRING", False),  # description حذف شد
+                create_arg("progress", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
             ],
         })
         tools.append({
@@ -198,25 +198,20 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/health/update/",
             "method": "PATCH",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("medical_history", "تاریخچه پزشکی کاربر (بیماری‌های گذشته، جراحی‌ها).", "STRING", False),
-                create_arg("chronic_conditions", "بیماری‌های مزمن کاربر (مثل دیابت، فشار خون).", "STRING", False),
-                create_arg("allergies", "آلرژی‌های کاربر (مثل حساسیت به دارو یا غذا).", "STRING", False),
-                create_arg("diet_type", "نوع رژیم غذایی (مثلاً گیاه‌خواری، بدون گلوتن).", "STRING", False),
-                create_arg("daily_calorie_intake", "میانگین کالری مصرفی روزانه.", "INTEGER", False),
-                # NUMBER به INTEGER تغییر یافت
-                create_arg("physical_activity_level", "سطح فعالیت بدنی (کم، متوسط، زیاد).", "STRING", False),
-                create_arg("height", "قد کاربر به سانتی‌متر (مثلاً 175.5).", "FLOAT", False),
-                # NUMBER به FLOAT تغییر یافت
-                create_arg("weight", "وزن کاربر به کیلوگرم (مثلاً 70.2).", "FLOAT", False),
-                # NUMBER به FLOAT تغییر یافت
-                create_arg("bmi", "شاخص توده بدنی (BMI).", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
-                create_arg("mental_health_status", "وضعیت سلامت روان (مثل اضطراب، افسردگی، حال عمومی).", "STRING",
-                           False),
-                create_arg("sleep_hours", "میانگین ساعات خواب روزانه (مثلاً 7.5).", "FLOAT", False),
-                # NUMBER به FLOAT تغییر یافت
-                create_arg("medications", "داروهای در حال مصرف و دوز آن‌ها.", "STRING", False),
-                create_arg("last_checkup_date", "تاریخ آخرین معاینه پزشکی در قالب Woche-MM-DD.", "STRING", False),
+                create_arg("user_id", "STRING", True),
+                create_arg("medical_history", "STRING", False),
+                create_arg("chronic_conditions", "STRING", False),
+                create_arg("allergies", "STRING", False),
+                create_arg("diet_type", "STRING", False),
+                create_arg("daily_calorie_intake", "INTEGER", False),  # NUMBER به INTEGER تغییر یافت
+                create_arg("physical_activity_level", "STRING", False),
+                create_arg("height", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
+                create_arg("weight", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
+                create_arg("bmi", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
+                create_arg("mental_health_status", "STRING", False),
+                create_arg("sleep_hours", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
+                create_arg("medications", "STRING", False),
+                create_arg("last_checkup_date", "STRING", False),
             ]
         })
         tools.append({
@@ -225,15 +220,15 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/psych/update/",
             "method": "PATCH",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("personality_type", "تیپ شخصیتی (مثلاً MBTI: INFP، یا Big Five).", "STRING", False),
-                create_arg("core_values", "ارزش‌های اصلی کاربر (مثلاً خانواده، موفقیت، آزادی).", "STRING", False),
-                create_arg("motivations", "انگیزه‌های کاربر (مثلاً رشد شخصی، ثبات مالی).", "STRING", False),
-                create_arg("decision_making_style", "سبک تصمیم‌گیری (منطقی، احساسی، ترکیبی).", "STRING", False),
-                create_arg("stress_response", "واکنش به استرس (مثلاً اجتناب، مقابله فعال).", "STRING", False),
-                create_arg("emotional_triggers", "محرک‌های احساسی (مثلاً انتقاد یا فشار کاری).", "STRING", False),
-                create_arg("preferred_communication", "سبک ارتباطی (مستقیم، غیرمستقیم).", "STRING", False),
-                create_arg("resilience_level", "سطح تاب‌آوری روانی (کم، متوسط، زیاد).", "STRING", False),
+                create_arg("user_id", "STRING", True),
+                create_arg("personality_type", "STRING", False),
+                create_arg("core_values", "STRING", False),
+                create_arg("motivations", "STRING", False),
+                create_arg("decision_making_style", "STRING", False),
+                create_arg("stress_response", "STRING", False),
+                create_arg("emotional_triggers", "STRING", False),
+                create_arg("preferred_communication", "STRING", False),
+                create_arg("resilience_level", "STRING", False),
             ]
         })
         tools.append({
@@ -242,19 +237,17 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/career/update/",
             "method": "PATCH",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("education_level", "سطح تحصیلات (مثلاً کارشناسی، دکتری).", "STRING", False),
-                create_arg("field_of_study", "رشته تحصیلی (مثلاً مهندسی، پزشکی).", "STRING", False),
-                create_arg("skills", "مهارت‌های حرفه‌ای (مثلاً برنامه‌نویسی، مدیریت پروژه).", "STRING", False),
-                create_arg("job_title", "عنوان شغلی فعلی.", "STRING", False),
-                create_arg("industry", "صنعت کاری (مثلاً فناوری، آموزش).", "STRING", False),
-                create_arg("job_satisfaction", "سطح رضایت شغلی (از 1 تا 10).", "INTEGER", False),
-                # NUMBER به INTEGER تغییر یافت
-                create_arg("career_goals", "اهداف حرفه‌ای (مثلاً ارتقا، تغییر شغل).", "STRING", False),
-                create_arg("work_hours", "میانگین ساعات کاری هفتگی (مثلاً 40.5).", "FLOAT", False),
-                # NUMBER به FLOAT تغییر یافت
-                create_arg("learning_style", "سبک یادگیری (بصری، شنیداری، عملی).", "STRING", False),
-                create_arg("certifications", "گواهینامه‌های حرفه‌ای.", "STRING", False),
+                create_arg("user_id", "STRING", True),
+                create_arg("education_level", "STRING", False),
+                create_arg("field_of_study", "STRING", False),
+                create_arg("skills", "STRING", False),
+                create_arg("job_title", "STRING", False),
+                create_arg("industry", "STRING", False),
+                create_arg("job_satisfaction", "INTEGER", False),  # NUMBER به INTEGER تغییر یافت
+                create_arg("career_goals", "STRING", False),
+                create_arg("work_hours", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
+                create_arg("learning_style", "STRING", False),
+                create_arg("certifications", "STRING", False),
             ]
         })
         tools.append({
@@ -263,15 +256,15 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/finance/update/",
             "method": "PATCH",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("monthly_income", "درآمد ماهانه.", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
-                create_arg("monthly_expenses", "هزینه‌های ماهانه.", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
-                create_arg("savings", "مقدار پس‌انداز.", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
-                create_arg("debts", "مقدار بدهی‌ها.", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
-                create_arg("investment_types", "انواع سرمایه‌گذاری (مثل سهام، املاک).", "STRING", False),
-                create_arg("financial_goals", "اهداف مالی (مثل خرید خانه، بازنشستگی).", "STRING", False),
-                create_arg("risk_tolerance", "سطح تحمل ریسک (کم، متوسط، زیاد).", "STRING", False),
-                create_arg("budgeting_habits", "عادات بودجه‌بندی (مثلاً پس‌انداز ماهانه).", "STRING", False),
+                create_arg("user_id", "STRING", True),
+                create_arg("monthly_income", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
+                create_arg("monthly_expenses", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
+                create_arg("savings", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
+                create_arg("debts", "FLOAT", False),  # NUMBER به FLOAT تغییر یافت
+                create_arg("investment_types", "STRING", False),
+                create_arg("financial_goals", "STRING", False),
+                create_arg("risk_tolerance", "STRING", False),
+                create_arg("budgeting_habits", "STRING", False),
             ]
         })
         tools.append({
@@ -280,13 +273,13 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/social/update/",
             "method": "PATCH",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("key_relationships", "افراد کلیدی در زندگی (مثلاً خانواده، دوستان).", "STRING", False),
-                create_arg("relationship_status", "وضعیت روابط عاطفی (مثلاً در رابطه، مجرد، متأهل).", "STRING", False),
-                create_arg("communication_style", "سبک ارتباطی (مثلاً برون‌گرا، درون‌گرا).", "STRING", False),
-                create_arg("emotional_needs", "نیازهای عاطفی (مثلاً حمایت، تأیید).", "STRING", False),
-                create_arg("social_frequency", "میزان تعاملات اجتماعی (روزانه، هفتگی، ماهانه).", "STRING", False),
-                create_arg("conflict_resolution", "روش‌های حل تعارض در روابط.", "STRING", False),
+                create_arg("user_id", "STRING", True),
+                create_arg("key_relationships", "STRING", False),
+                create_arg("relationship_status", "STRING", False),
+                create_arg("communication_style", "STRING", False),
+                create_arg("emotional_needs", "STRING", False),
+                create_arg("social_frequency", "STRING", False),
+                create_arg("conflict_resolution", "STRING", False),
             ]
         })
         tools.append({
@@ -295,15 +288,15 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/preferences/update/",
             "method": "PATCH",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("hobbies", "سرگرمی‌ها (مثل ورزش، نقاشی).", "STRING", False),
-                create_arg("favorite_music_genres", "ژانرهای موسیقی مورد علاقه.", "STRING", False),
-                create_arg("favorite_movies", "فیلم‌ها یا ژانرهای سینمایی مورد علاقه.", "STRING", False),
-                create_arg("reading_preferences", "نوع کتاب‌های مورد علاقه.", "STRING", False),
-                create_arg("travel_preferences", "ترجیحات سفر (مثلاً ماجراجویی، فرهنگی).", "STRING", False),
-                create_arg("food_preferences", "ترجیحات غذایی (مثلاً غذاهای تند، سنتی).", "STRING", False),
-                create_arg("lifestyle_choices", "سبک زندگی (مثلاً مینیمال، لوکس).", "STRING", False),
-                create_arg("movie_fav_choices", "فیلم‌های مورد علاقه کاربر.", "STRING", False),
+                create_arg("user_id", "STRING", True),
+                create_arg("hobbies", "STRING", False),
+                create_arg("favorite_music_genres", "STRING", False),
+                create_arg("favorite_movies", "STRING", False),
+                create_arg("reading_preferences", "STRING", False),
+                create_arg("travel_preferences", "STRING", False),
+                create_arg("food_preferences", "STRING", False),
+                create_arg("lifestyle_choices", "STRING", False),
+                create_arg("movie_fav_choices", "STRING", False),
             ]
         })
         tools.append({
@@ -312,14 +305,13 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/environment/update/",
             "method": "PATCH",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("current_city", "شهر محل زندگی فعلی.", "STRING", False),
-                create_arg("climate", "وضعیت آب‌وهوایی محل زندگی (مثل معتدل، گرم، سرد).", "STRING", False),
-                create_arg("housing_type", "نوع محل سکونت (آپارتمان، خانه ویلایی).", "STRING", False),
-                create_arg("tech_access", "دسترسی به فناوری (مثل گوشی هوشمند، اینترنت پرسرعت).", "STRING", False),
-                create_arg("life_events", "رویدادهای مهم زندگی (مثل ازدواج، نقل‌مکان، تولد فرزند).", "STRING", False),
-                create_arg("transportation", "وسایل حمل‌ونقل مورد استفاده (مثلاً ماشین شخصی، مترو، اتوبوس).", "STRING",
-                           False),
+                create_arg("user_id", "STRING", True),
+                create_arg("current_city", "STRING", False),
+                create_arg("climate", "STRING", False),
+                create_arg("housing_type", "STRING", False),
+                create_arg("tech_access", "STRING", False),
+                create_arg("life_events", "STRING", False),
+                create_arg("transportation", "STRING", False),
             ]
         })
         tools.append({
@@ -328,12 +320,12 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/realtime/update/",
             "method": "PATCH",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("current_location", "مکان فعلی کاربر (مثلاً مختصات GPS یا نام مکان).", "STRING", False),
-                create_arg("current_mood", "حال و هوای لحظه‌ای (مثلاً خوشحال، مضطرب، خنثی).", "STRING", False),
-                create_arg("current_activity", "فعالیت فعلی (مثلاً کار، استراحت، ورزش).", "STRING", False),
-                create_arg("daily_schedule", "برنامه روزانه (مثلاً جلسات، وظایف).", "STRING", False),
-                create_arg("heart_rate", "ضربان قلب کاربر.", "INTEGER", False),  # NUMBER به INTEGER تغییر یافت
+                create_arg("user_id", "STRING", True),
+                create_arg("current_location", "STRING", False),
+                create_arg("current_mood", "STRING", False),
+                create_arg("current_activity", "STRING", False),
+                create_arg("daily_schedule", "STRING", False),
+                create_arg("heart_rate", "INTEGER", False),  # NUMBER به INTEGER تغییر یافت
             ]
         })
         tools.append({
@@ -342,13 +334,11 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/feedback/update/",
             "method": "PATCH",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("feedback_text", "نظرات کاربر درباره عملکرد AI.", "STRING", False),
-                create_arg("interaction_type", "نوع تعامل (مثلاً سوال، توصیه، دستور).", "STRING", False),
-                create_arg("interaction_rating", "امتیاز کاربر به تعامل (از 1 تا 5).", "INTEGER", False),
-                # NUMBER به INTEGER تغییر یافت
-                create_arg("interaction_frequency", "تعداد تعاملات در بازه زمانی.", "INTEGER", False),
-                # NUMBER به INTEGER تغییر یافت
+                create_arg("user_id", "STRING", True),
+                create_arg("feedback_text", "STRING", False),
+                create_arg("interaction_type", "STRING", False),
+                create_arg("interaction_rating", "INTEGER", False),  # NUMBER به INTEGER تغییر یافت
+                create_arg("interaction_frequency", "INTEGER", False),  # NUMBER به INTEGER تغییر یافت
             ]
         })
         tools.append({
@@ -357,20 +347,18 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/profile/update/",
             "method": "PATCH",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("first_name", "نام کوچک کاربر.", "STRING", False),
-                create_arg("last_name", "نام خانوادگی کاربر.", "STRING", False),
-                create_arg("age", "سن کاربر.", "INTEGER", False),  # NUMBER به INTEGER تغییر یافت
-                create_arg("gender", "جنسیت کاربر.", "STRING", False),
-                create_arg("nationality", "ملیت کاربر.", "STRING", False),
-                create_arg("location", "محل زندگی کاربر (شهر یا کشور).", "STRING", False),
-                create_arg("languages", "زبان‌های مورد استفاده کاربر.", "STRING", False),
-                create_arg("cultural_background", "اطلاعات فرهنگی و ارزش‌های کاربر.", "STRING", False),
-                create_arg("marital_status", "وضعیت تأهل (مجرد، متأهل، مطلقه).", "STRING", False),
-                create_arg("ai_psychological_test", "نتیجه تست روانشناسی کاربر.", "STRING", False),
-                create_arg("user_information_summary",
-                           "خلاصه‌ای از تمام اطلاعات کاربر که با استفاده از هوش مصنوعی خلاصه شده است.", "STRING",
-                           False),
+                create_arg("user_id", "STRING", True),
+                create_arg("first_name", "STRING", False),
+                create_arg("last_name", "STRING", False),
+                create_arg("age", "INTEGER", False),  # NUMBER به INTEGER تغییر یافت
+                create_arg("gender", "STRING", False),
+                create_arg("nationality", "STRING", False),
+                create_arg("location", "STRING", False),
+                create_arg("languages", "STRING", False),
+                create_arg("cultural_background", "STRING", False),
+                create_arg("marital_status", "STRING", False),
+                create_arg("ai_psychological_test", "STRING", False),
+                create_arg("user_information_summary", "STRING", False),
             ]
         })
         tools.append({
@@ -379,11 +367,11 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/psych-test-history/create/",
             "method": "POST",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("test_name", "نام تست (مثلاً MBTI Psychological Test).", "STRING", True),
-                create_arg("test_result_summary", "خلاصه نتایج تست.", "STRING", True),
-                create_arg("full_test_data", "داده‌های کامل تست به فرمت JSON (به صورت رشته JSON).", "STRING", False),
-                create_arg("ai_analysis", "تحلیل AI از نتایج تست.", "STRING", False),
+                create_arg("user_id", "STRING", True),
+                create_arg("test_name", "STRING", True),
+                create_arg("test_result_summary", "STRING", True),
+                create_arg("full_test_data", "STRING", False),
+                create_arg("ai_analysis", "STRING", False),
             ]
         })
         tools.append({
@@ -392,13 +380,12 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/psych-test-history/update/",
             "method": "PATCH",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("pk", "شناسه یکتای رکورد تست روانشناسی برای به‌روزرسانی.", "INTEGER", True),
-                # NUMBER به INTEGER تغییر یافت
-                create_arg("test_name", "نام تست.", "STRING", False),
-                create_arg("test_result_summary", "خلاصه نتایج تست.", "STRING", False),
-                create_arg("full_test_data", "داده‌های کامل تست به فرمت JSON (به صورت رشته JSON).", "STRING", False),
-                create_arg("ai_analysis", "تحلیل AI از نتایج تست.", "STRING", False),
+                create_arg("user_id", "STRING", True),
+                create_arg("pk", "INTEGER", True),  # NUMBER به INTEGER تغییر یافت
+                create_arg("test_name", "STRING", False),
+                create_arg("test_result_summary", "STRING", False),
+                create_arg("full_test_data", "STRING", False),
+                create_arg("ai_analysis", "STRING", False),
             ]
         })
         tools.append({
@@ -407,9 +394,8 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/psych-test-history/delete/",
             "method": "DELETE",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("pk", "شناسه یکتای رکورد تست روانشناسی برای حذف.", "INTEGER", True),
-                # NUMBER به INTEGER تغییر یافت
+                create_arg("user_id", "STRING", True),
+                create_arg("pk", "INTEGER", True),  # NUMBER به INTEGER تغییر یافت
             ]
         })
 
