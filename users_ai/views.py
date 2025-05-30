@@ -11,7 +11,7 @@ import json
 import logging
 import datetime
 from django.db import transaction
-from .permissions import IsMetisToolCallback  # این ایمپورت برای زمانی که توکن را دوباره فعال می‌کنید لازم است
+from .permissions import IsMetisToolCallback
 from django.conf import settings
 
 # Import your models
@@ -151,9 +151,8 @@ class RealTimeDataDetail(UserSpecificOneToOneViewSet):
     serializer_class = RealTimeDataSerializer
 
 
-class FeedbackLearningDetail(
-    UserSpecificOneToOneViewSet):  # Note: User model has FeedbackLearning as ForeignKey (many per user)
-    queryset = FeedbackLearning.objects.all()  # This view implies one-to-one update for the user if not careful
+class FeedbackLearningDetail(UserSpecificOneToOneViewSet):
+    queryset = FeedbackLearning.objects.all()
     serializer_class = FeedbackLearningSerializer
 
 
@@ -182,7 +181,7 @@ class HabitDetail(UserSpecificForeignKeyDetailViewSet):
 # ----------------------------------------------------
 
 class ToolUpdateUserProfileDetailsView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
     def patch(self, request, *args, **kwargs):
@@ -194,8 +193,8 @@ class ToolUpdateUserProfileDetailsView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' format: {user_id}.")
             return Response({"error": "Invalid User ID format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -206,8 +205,10 @@ class ToolUpdateUserProfileDetailsView(APIView):
         profile_data_for_serializer = request.data.copy()
         profile_data_for_serializer.pop('user_id', None)
 
-        profile, created = UserProfile.objects.get_or_create(user=user, defaults=profile_data_for_serializer)
-        # If not created, 'defaults' are ignored by get_or_create. Data is passed to serializer for update.
+        # For OneToOne fields, get_or_create is suitable.
+        # The 'defaults' will only be used if the object is being created.
+        defaults_for_create = profile_data_for_serializer.copy()
+        profile, created = UserProfile.objects.get_or_create(user=user, defaults=defaults_for_create)
 
         serializer = UserProfileSerializer(profile, data=profile_data_for_serializer, partial=True,
                                            context={'request': request})
@@ -229,7 +230,7 @@ class ToolUpdateUserProfileDetailsView(APIView):
 
 
 class ToolUpdateHealthRecordView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
     def patch(self, request, *args, **kwargs):
@@ -241,8 +242,8 @@ class ToolUpdateHealthRecordView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data for tool calls."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' format: {user_id}.")
             return Response({"error": f"Invalid User ID format: '{user_id}'. Must be an integer."},
@@ -276,7 +277,7 @@ class ToolUpdateHealthRecordView(APIView):
 
 
 class ToolUpdatePsychologicalProfileView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
     def patch(self, request, *args, **kwargs):
@@ -288,8 +289,8 @@ class ToolUpdatePsychologicalProfileView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' format: {user_id}.")
             return Response({"error": "Invalid User ID format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -319,7 +320,7 @@ class ToolUpdatePsychologicalProfileView(APIView):
 
 
 class ToolUpdateCareerEducationView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
     def patch(self, request, *args, **kwargs):
@@ -331,8 +332,8 @@ class ToolUpdateCareerEducationView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' format: {user_id}.")
             return Response({"error": "Invalid User ID format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -362,7 +363,7 @@ class ToolUpdateCareerEducationView(APIView):
 
 
 class ToolUpdateFinancialInfoView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
     def patch(self, request, *args, **kwargs):
@@ -374,8 +375,8 @@ class ToolUpdateFinancialInfoView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' format: {user_id}.")
             return Response({"error": "Invalid User ID format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -405,7 +406,7 @@ class ToolUpdateFinancialInfoView(APIView):
 
 
 class ToolUpdateSocialRelationshipView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
     def patch(self, request, *args, **kwargs):
@@ -417,8 +418,8 @@ class ToolUpdateSocialRelationshipView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' format: {user_id}.")
             return Response({"error": "Invalid User ID format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -449,7 +450,7 @@ class ToolUpdateSocialRelationshipView(APIView):
 
 
 class ToolUpdatePreferenceInterestView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
     def patch(self, request, *args, **kwargs):
@@ -461,8 +462,8 @@ class ToolUpdatePreferenceInterestView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' format: {user_id}.")
             return Response({"error": "Invalid User ID format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -492,7 +493,7 @@ class ToolUpdatePreferenceInterestView(APIView):
 
 
 class ToolUpdateEnvironmentalContextView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
     def patch(self, request, *args, **kwargs):
@@ -504,8 +505,8 @@ class ToolUpdateEnvironmentalContextView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' format: {user_id}.")
             return Response({"error": "Invalid User ID format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -535,7 +536,7 @@ class ToolUpdateEnvironmentalContextView(APIView):
 
 
 class ToolUpdateRealTimeDataView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
     def patch(self, request, *args, **kwargs):
@@ -547,8 +548,8 @@ class ToolUpdateRealTimeDataView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' format: {user_id}.")
             return Response({"error": "Invalid User ID format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -579,10 +580,10 @@ class ToolUpdateRealTimeDataView(APIView):
 
 
 class ToolUpdateFeedbackLearningView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
-    http_method_names = ['patch', 'post']  # Allowing POST for creation, PATCH for update (needs PK for PATCH)
+    permission_classes = [IsMetisToolCallback]
+    http_method_names = ['post']  # Changed to POST for creating new feedback, as FeedbackLearning is ForeignKey
 
-    def post(self, request, *args, **kwargs):  # Changed to POST for creating new feedback
+    def post(self, request, *args, **kwargs):
         logger.info(f"Tool {self.__class__.__name__} (POST) - Request Query Params: {request.query_params}")
         logger.info(f"Tool {self.__class__.__name__} (POST) - Request Data: {request.data}")
         user_id = request.data.get('user_id')
@@ -591,8 +592,8 @@ class ToolUpdateFeedbackLearningView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' format: {user_id}.")
             return Response({"error": "Invalid User ID format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -606,7 +607,7 @@ class ToolUpdateFeedbackLearningView(APIView):
 
         serializer = FeedbackLearningSerializer(data=feedback_data_for_serializer, context={'request': request})
         if serializer.is_valid():
-            serializer.save(user=user)  # Pass user to save method for ForeignKey
+            serializer.save(user=user)
             logger.info(f"Tool: New FeedbackLearning created for user {user.phone_number}.")
             return Response({"status": "success",
                              "message": f"بازخورد جدید برای کاربر {user.phone_number} با موفقیت ایجاد شد.",
@@ -617,12 +618,9 @@ class ToolUpdateFeedbackLearningView(APIView):
                 {"status": "error", "message": "خطا در ایجاد بازخورد و یادگیری.", "errors": serializer.errors},
                 status=status.HTTP_400_BAD_REQUEST)
 
-    # patch method would need a pk to identify which FeedbackLearning record to update
-    # def patch(self, request, pk, *args, **kwargs): ... (similar structure if update is needed)
-
 
 class ToolCreateGoalView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['post']
 
     def post(self, request, *args, **kwargs):
@@ -634,8 +632,8 @@ class ToolCreateGoalView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' format: {user_id}.")
             return Response({"error": "Invalid User ID format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -658,7 +656,7 @@ class ToolCreateGoalView(APIView):
 
 
 class ToolUpdateGoalView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
     def patch(self, request, *args, **kwargs):
@@ -675,9 +673,9 @@ class ToolUpdateGoalView(APIView):
             return Response({"error": "Goal PK ('pk') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            pk = int(pk)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            pk_int = int(pk)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' or 'pk' format.")
             return Response({"error": "Invalid User ID or PK format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -685,24 +683,25 @@ class ToolUpdateGoalView(APIView):
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        goal = get_object_or_404(Goal, pk=pk, user=user)
+        goal = get_object_or_404(Goal, pk=pk_int, user=user)
         goal_data_for_serializer = request.data.copy()
         goal_data_for_serializer.pop('user_id', None)
         goal_data_for_serializer.pop('pk', None)
         serializer = GoalSerializer(goal, data=goal_data_for_serializer, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
-            logger.info(f"Tool: Goal {pk} updated for user {user.phone_number}.")
-            return Response({"status": "success", "message": f"هدف {pk} کاربر {user.phone_number} با موفقیت به‌روز شد.",
-                             "data": serializer.data}, status=status.HTTP_200_OK)
+            logger.info(f"Tool: Goal {pk_int} updated for user {user.phone_number}.")
+            return Response(
+                {"status": "success", "message": f"هدف {pk_int} کاربر {user.phone_number} با موفقیت به‌روز شد.",
+                 "data": serializer.data}, status=status.HTTP_200_OK)
         else:
-            logger.error(f"Tool: Error updating goal {pk} for {user.phone_number}: {serializer.errors}")
+            logger.error(f"Tool: Error updating goal {pk_int} for {user.phone_number}: {serializer.errors}")
             return Response({"status": "error", "message": "خطا در به‌روزرسانی هدف.", "errors": serializer.errors},
                             status=status.HTTP_400_BAD_REQUEST)
 
 
 class ToolDeleteGoalView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['delete']
 
     def delete(self, request, *args, **kwargs):
@@ -719,9 +718,9 @@ class ToolDeleteGoalView(APIView):
             return Response({"error": "Goal PK ('pk') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            pk = int(pk)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            pk_int = int(pk)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' or 'pk' format.")
             return Response({"error": "Invalid User ID or PK format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -729,15 +728,15 @@ class ToolDeleteGoalView(APIView):
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        goal = get_object_or_404(Goal, pk=pk, user=user)
+        goal = get_object_or_404(Goal, pk=pk_int, user=user)
         goal.delete()
-        logger.info(f"Tool: Goal {pk} deleted for user {user.phone_number}.")
-        return Response({"status": "success", "message": f"هدف {pk} کاربر {user.phone_number} با موفقیت حذف شد."},
+        logger.info(f"Tool: Goal {pk_int} deleted for user {user.phone_number}.")
+        return Response({"status": "success", "message": f"هدف {pk_int} کاربر {user.phone_number} با موفقیت حذف شد."},
                         status=status.HTTP_204_NO_CONTENT)
 
 
 class ToolCreateHabitView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['post']
 
     def post(self, request, *args, **kwargs):
@@ -749,8 +748,8 @@ class ToolCreateHabitView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' format: {user_id}.")
             return Response({"error": "Invalid User ID format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -773,7 +772,7 @@ class ToolCreateHabitView(APIView):
 
 
 class ToolUpdateHabitView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
     def patch(self, request, pk, *args, **kwargs):  # pk from URL
@@ -786,9 +785,9 @@ class ToolUpdateHabitView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            pk = int(pk)  # pk from URL is already a string, convert to int for query
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            pk_int = int(pk)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' or 'pk' format.")
             return Response({"error": "Invalid User ID or PK format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -796,24 +795,24 @@ class ToolUpdateHabitView(APIView):
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        habit = get_object_or_404(Habit, pk=pk, user=user)
+        habit = get_object_or_404(Habit, pk=pk_int, user=user)
         habit_data_for_serializer = request.data.copy()
         habit_data_for_serializer.pop('user_id', None)
         serializer = HabitSerializer(habit, data=habit_data_for_serializer, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
-            logger.info(f"Tool: Habit {pk} updated for user {user.phone_number}.")
+            logger.info(f"Tool: Habit {pk_int} updated for user {user.phone_number}.")
             return Response(
-                {"status": "success", "message": f"عادت {pk} کاربر {user.phone_number} با موفقیت به‌روز شد.",
+                {"status": "success", "message": f"عادت {pk_int} کاربر {user.phone_number} با موفقیت به‌روز شد.",
                  "data": serializer.data}, status=status.HTTP_200_OK)
         else:
-            logger.error(f"Tool: Error updating habit {pk} for {user.phone_number}: {serializer.errors}")
+            logger.error(f"Tool: Error updating habit {pk_int} for {user.phone_number}: {serializer.errors}")
             return Response({"status": "error", "message": "خطا در به‌روزرسانی عادت.", "errors": serializer.errors},
                             status=status.HTTP_400_BAD_REQUEST)
 
 
 class ToolDeleteHabitView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['delete']
 
     def delete(self, request, pk, *args, **kwargs):  # pk from URL
@@ -824,7 +823,7 @@ class ToolDeleteHabitView(APIView):
 
         if not user_id:
             logger.error(
-                f"Tool {self.__class__.__name__}: 'user_id' must be provided in request data for DELETE with PK in URL if needed for validation beyond ownership.")
+                f"Tool {self.__class__.__name__}: 'user_id' must be provided in request data for DELETE with PK in URL.")
             return Response({"error": "User ID ('user_id') is required in the request data for this operation."},
                             status=status.HTTP_400_BAD_REQUEST)
 
@@ -849,7 +848,7 @@ class ToolDeleteHabitView(APIView):
 
 
 class ToolCreatePsychTestRecordView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['post']
 
     def post(self, request, *args, **kwargs):
@@ -861,8 +860,8 @@ class ToolCreatePsychTestRecordView(APIView):
             return Response({"error": "User ID ('user_id') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' format: {user_id}.")
             return Response({"error": "Invalid User ID format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -888,7 +887,7 @@ class ToolCreatePsychTestRecordView(APIView):
 
 
 class ToolUpdatePsychTestRecordView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
     def patch(self, request, *args, **kwargs):
@@ -905,9 +904,9 @@ class ToolUpdatePsychTestRecordView(APIView):
             return Response({"error": "PsychTestHistory PK ('pk') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            pk = int(pk)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            pk_int = int(pk)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' or 'pk' format.")
             return Response({"error": "Invalid User ID or PK format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -915,7 +914,7 @@ class ToolUpdatePsychTestRecordView(APIView):
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        psych_test_record = get_object_or_404(PsychTestHistory, pk=pk, user=user)
+        psych_test_record = get_object_or_404(PsychTestHistory, pk=pk_int, user=user)
         test_data_for_serializer = request.data.copy()
         test_data_for_serializer.pop('user_id', None)
         test_data_for_serializer.pop('pk', None)
@@ -923,20 +922,20 @@ class ToolUpdatePsychTestRecordView(APIView):
                                                 context={'request': request})
         if serializer.is_valid():
             serializer.save()
-            logger.info(f"Tool: PsychTestHistory record {pk} updated for user {user.phone_number}.")
+            logger.info(f"Tool: PsychTestHistory record {pk_int} updated for user {user.phone_number}.")
             return Response({"status": "success",
-                             "message": f"رکورد تست روانشناسی {pk} کاربر {user.phone_number} با موفقیت به‌روز شد.",
+                             "message": f"رکورد تست روانشناسی {pk_int} کاربر {user.phone_number} با موفقیت به‌روز شد.",
                              "data": serializer.data}, status=status.HTTP_200_OK)
         else:
             logger.error(
-                f"Tool: Error updating PsychTestHistory record {pk} for {user.phone_number}: {serializer.errors}")
+                f"Tool: Error updating PsychTestHistory record {pk_int} for {user.phone_number}: {serializer.errors}")
             return Response(
                 {"status": "error", "message": "خطا در به‌روزرسانی رکورد تست روانشناسی.", "errors": serializer.errors},
                 status=status.HTTP_400_BAD_REQUEST)
 
 
 class ToolDeletePsychTestRecordView(APIView):
-    permission_classes = [permissions.AllowAny]  # [IsMetisToolCallback] توکن موقتا غیرفعال شد
+    permission_classes = [IsMetisToolCallback]
     http_method_names = ['delete']
 
     def delete(self, request, *args, **kwargs):
@@ -953,9 +952,9 @@ class ToolDeletePsychTestRecordView(APIView):
             return Response({"error": "PsychTestHistory PK ('pk') is required in the request data."},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_id = int(user_id)
-            pk = int(pk)
-            user = User.objects.get(id=user_id)
+            user_id_int = int(user_id)
+            pk_int = int(pk)
+            user = User.objects.get(id=user_id_int)
         except ValueError:
             logger.error(f"Tool {self.__class__.__name__}: Invalid 'user_id' or 'pk' format.")
             return Response({"error": "Invalid User ID or PK format."}, status=status.HTTP_400_BAD_REQUEST)
@@ -963,12 +962,12 @@ class ToolDeletePsychTestRecordView(APIView):
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        psych_test_record = get_object_or_404(PsychTestHistory, pk=pk, user=user)
+        psych_test_record = get_object_or_404(PsychTestHistory, pk=pk_int, user=user)
         psych_test_record.delete()
-        logger.info(f"Tool: PsychTestHistory record {pk} deleted for user {user.phone_number}.")
-        return Response(
-            {"status": "success", "message": f"رکورد تست روانشناسی {pk} کاربر {user.phone_number} با موفقیت حذف شد."},
-            status=status.HTTP_204_NO_CONTENT)
+        logger.info(f"Tool: PsychTestHistory record {pk_int} deleted for user {user.phone_number}.")
+        return Response({"status": "success",
+                         "message": f"رکورد تست روانشناسی {pk_int} کاربر {user.phone_number} با موفقیت حذف شد."},
+                        status=status.HTTP_204_NO_CONTENT)
 
 
 # ----------------------------------------------------
@@ -1075,7 +1074,11 @@ class AIAgentChatView(APIView):
         if user_profile.user_information_summary: context_parts.append(
             f"خلاصه جامع کاربر (تولید شده توسط AI یا خلاصه‌نویسی شده):\n{user_profile.user_information_summary}")
         full_context = "\n\n".join(filter(None, context_parts))
-        logger.debug(f"Generated AI context for user {user_profile.user.phone_number}: {full_context[:500]}...")
+        logger.debug(
+            f"Generated AI context for user {user_profile.user.phone_number}: Context length: {len(full_context)}")
+        if len(full_context) > 15000:  # Example limit, adjust as needed
+            logger.warning(
+                f"Generated AI context for user {user_profile.user.phone_number} is very long: {len(full_context)} chars. Truncating or summarizing might be needed if API limits are hit.")
         return full_context
 
     def post(self, request, *args, **kwargs):
@@ -1119,25 +1122,46 @@ class AIAgentChatView(APIView):
                             current_session_instance.add_to_chat_history("user", user_message_content)
                             current_session_instance.add_to_chat_history("assistant", metis_ai_response_content)
                     else:
-                        return Response({'detail': 'جلسه نامعتبر است یا پیدا نشد.'}, status=status.HTTP_404_NOT_FOUND)
+                        logger.warning(
+                            f"Session ID {session_id_from_request} provided but not found or inactive for user {user.phone_number}.")
+                        # Decide: either create a new session or return error.
+                        # For now, let's try to create a new one if not found.
+                        current_session_instance = None  # Ensure new session creation if ID was invalid
 
                 if not current_session_instance:
+                    logger.info(
+                        f"No valid active session found or provided. Attempting to create a new session for user {user.phone_number}.")
                     if not is_psych_test and user_profile.role and active_sessions.count() >= user_profile.role.max_active_sessions:
                         return Response({
                                             'detail': f'شما به حداکثر تعداد جلسات فعال ({user_profile.role.max_active_sessions}) رسیده‌اید.'},
                                         status=status.HTTP_400_BAD_REQUEST)
+
                     initial_metis_messages = []
                     user_context_for_ai = self._get_user_context_for_ai(user_profile)
                     if user_context_for_ai: initial_metis_messages.append(
                         {"type": "USER", "content": user_context_for_ai})
                     initial_metis_messages.append({"type": "USER", "content": user_message_content})
-                    logger.info(f"Starting new Metis AI session for user {user.phone_number}")
+
+                    logger.info(
+                        f"Starting new Metis AI session for user {user.phone_number} with {len(initial_metis_messages)} initial messages.")
                     user_data_for_metis = self._get_user_info_for_metis_api(user_profile)
+
+                    # Removed 'functions' parameter from create_chat_session
                     metis_response = metis_service.create_chat_session(
-                        bot_id=metis_service.bot_id, user_data=user_data_for_metis,
-                        initial_messages=initial_metis_messages)
+                        bot_id=metis_service.bot_id,
+                        user_data=user_data_for_metis,
+                        initial_messages=initial_metis_messages
+                    )
                     metis_session_id = metis_response.get('id')
-                    metis_ai_response_content = metis_response.get('content', 'پاسخی از طرف دستیار دریافت نشد.')
+                    metis_ai_response_content = metis_response.get('content',
+                                                                   'پاسخی از طرف دستیار دریافت نشد (هنگام ایجاد جلسه).')
+
+                    if not metis_session_id:
+                        logger.error(
+                            f"Failed to create Metis session for user {user.phone_number}. Response: {metis_response}")
+                        return Response({"error": "خطا در ایجاد جلسه با سرویس دستیار هوشمند."},
+                                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
                     session_name = "Psychological Test" if is_psych_test else f"Chat Session {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
                     duration_hours = 24
                     if user_profile.role:
@@ -1145,14 +1169,17 @@ class AIAgentChatView(APIView):
                     else:
                         logger.warning(
                             f"User {user_profile.user.phone_number} has no role, using default session duration.")
+
                     current_session_instance = AiResponse.objects.create(
                         user=user, ai_session_id=str(uuid.uuid4()), metis_session_id=metis_session_id,
                         ai_response_name=session_name,
                         expires_at=timezone.now() + timezone.timedelta(hours=duration_hours))
+
                     if user_context_for_ai: current_session_instance.add_to_chat_history("system",
                                                                                          f"Initial context: {user_context_for_ai}")
                     current_session_instance.add_to_chat_history("user", user_message_content)
                     current_session_instance.add_to_chat_history("assistant", metis_ai_response_content)
+
                     if is_psych_test:
                         PsychTestHistory.objects.create(user=user, test_name="MBTI Psychological Test",
                                                         test_result_summary="تست در حال انجام است.",
@@ -1256,11 +1283,11 @@ class AiChatSessionDetail(generics.RetrieveUpdateDestroyAPIView):
 
 
 class TestTimeView(APIView):
-    permission_classes = [permissions.AllowAny]  # برای تست اولیه بدون توکن مفید است
+    permission_classes = [IsMetisToolCallback]  # بازگرداندن به حالت اولیه یا AllowAny برای تست بدون توکن
 
     def get(self, request, *args, **kwargs):
         logger.info(f"Tool {self.__class__.__name__} - Request Query Params: {request.query_params}")
-        logger.info(f"Tool {self.__class__.__name__} - Request Data: {request.data}")  # معمولا برای GET خالی است
+        logger.info(f"Tool {self.__class__.__name__} - Request Data: {request.data}")
         now = datetime.datetime.now().isoformat()
         logger.info(f"TestTimeView (test-tool-status-minimal) called. Returning current time: {now}")
         return Response({"currentTime": now, "status": "ok", "message": "Test endpoint for Metis tool is working!"})
