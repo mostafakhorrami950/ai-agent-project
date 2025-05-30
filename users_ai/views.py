@@ -1027,18 +1027,34 @@ class AIAgentChatView(APIView):
             return PROFILE_SETUP_SYSTEM_PROMPT
 
         context_parts = []
+        # استفاده از user_information_summary اگر موجود باشد
         if user_profile.user_information_summary:
             context_parts.append(
                 f"خلاصه اطلاعات کاربر (برای استفاده در پاسخ‌ها):\n{user_profile.user_information_summary}")
         else:
+            # اگر خلاصه موجود نیست، اطلاعات پایه را از CustomUser و UserProfile جمع‌آوری کن
             profile_info_items = [f"شماره موبایل کاربر فعلی: {user_profile.user.phone_number}"]
-            if user_profile.user.first_name: profile_info_items.append(
-                f"نام: {user_profile.user.first_name}")  # اصلاح شده
-            if user_profile.user.last_name: profile_info_items.append(
-                f"نام خانوادگی: {user_profile.user.last_name}")  # اصلاح شده
-            if user_profile.age is not None: profile_info_items.append(f"سن: {user_profile.age}")
-            if profile_info_items: context_parts.append(
-                "اطلاعات پایه و هویتی کاربر:\n" + "\n".join([f"- {item}" for item in profile_info_items]))
+
+            # دسترسی به first_name و last_name از طریق user_profile.user
+            if user_profile.user.first_name:
+                profile_info_items.append(f"نام: {user_profile.user.first_name}")
+            if user_profile.user.last_name:
+                profile_info_items.append(f"نام خانوادگی: {user_profile.user.last_name}")
+
+            if user_profile.age is not None:
+                profile_info_items.append(f"سن: {user_profile.age}")
+
+            # می‌توانید سایر فیلدهای UserProfile را نیز در اینجا اضافه کنید اگر لازم است
+            # مثال:
+            # if user_profile.gender: profile_info_items.append(f"جنسیت: {user_profile.gender}")
+            # if user_profile.location: profile_info_items.append(f"مکان: {user_profile.location}")
+
+            if len(profile_info_items) > 1:  # اگر اطلاعاتی به جز شماره موبایل وجود دارد
+                context_parts.append(
+                    "اطلاعات پایه و هویتی کاربر:\n" + "\n".join([f"- {item}" for item in profile_info_items]))
+            else:  # اگر فقط شماره موبایل موجود است یا هیچکدام
+                context_parts.append(f"کاربر فعلی با شماره موبایل: {user_profile.user.phone_number}")
+
             context_parts.append(
                 "اطلاعات پروفایل کاربر هنوز تکمیل نشده است. می‌توانید از کاربر بخواهید با ارسال 'تکمیل پروفایل' اطلاعات خود را وارد کند.")
 
