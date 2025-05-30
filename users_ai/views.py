@@ -13,6 +13,8 @@ import datetime
 from django.db import transaction
 from .permissions import IsMetisToolCallback
 from django.conf import settings
+from datetime import timedelta
+from django.http import Http404
 
 # Import your models
 from .models import (
@@ -32,6 +34,34 @@ from .metis_ai_service import MetisAIService
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+# ثابت برای پیام سیستمی شروع تست پویا
+PROFILE_SETUP_SYSTEM_PROMPT = """شما در حال کمک به کاربر برای ساخت پروفایل جامع هستید. هدف جمع‌آوری اطلاعات کلیدی در مورد کاربر است. لطفاً سوالات زیر را به صورت طبیعی و محاوره‌ای، یکی پس از دیگری از کاربر بپرسید. پس از هر پاسخ کاربر، به سراغ سوال بعدی بروید. منتظر پاسخ کامل کاربر برای هر سوال باشید.
+سوالات کلیدی که باید پوشش داده شوند (می‌توانید ترتیب یا نحوه پرسش را برای طبیعی‌تر شدن مکالمه تغییر دهید):
+1.  سابقه پزشکی: آیا بیماری خاص یا مزمنی (مانند دیابت، فشار خون، آسم، مشکلات قلبی) دارید یا داشته‌اید؟ جراحی مهمی انجام داده‌اید؟
+2.  آلرژی: آیا به دارو، غذا یا ماده خاصی حساسیت دارید؟
+3.  رژیم غذایی: رژیم غذایی خاصی را دنبال می‌کنید (مثلاً گیاه‌خواری، وگان، بدون گلوتن، روزه‌داری متناوب)؟ عادات غذایی کلی شما چگونه است؟
+4.  فعالیت بدنی: سطح فعالیت بدنی شما معمولاً چگونه است (کم تحرک، فعالیت متوسط، فعال)؟ ورزش خاصی انجام می‌دهید؟
+5.  سلامت روان: وضعیت کلی سلامت روان خود را چگونه ارزیابی می‌کنید؟ آیا در حال حاضر با چالش‌هایی مانند استرس، اضطراب یا افسردگی مواجه هستید یا سابقه آن را داشته‌اید؟
+6.  خواب: معمولاً چند ساعت در شبانه‌روز می‌خوابید؟ کیفیت خواب شما چگونه است؟
+7.  شغل و تحصیلات: شغل فعلی شما چیست و در چه صنعتی فعالیت می‌کنید؟ بالاترین مدرک تحصیلی و رشته شما چیست؟
+8.  مهارت‌ها: مهم‌ترین مهارت‌های شغلی یا فردی خود را چه می‌دانید؟
+9.  اهداف شغلی: اهداف کوتاه‌مدت و بلندمدت شغلی و حرفه‌ای شما چیست؟
+10. شخصیت: خودتان را چگونه توصیف می‌کنید؟ اگر تست شخصیتی مانند MBTI داده‌اید، نتیجه آن چه بوده است؟ (اختیاری)
+11. ارزش‌های اصلی: چه ارزش‌هایی در زندگی برای شما از همه مهم‌تر هستند؟ (مثال: خانواده، صداقت، پیشرفت، آرامش)
+12. انگیزه‌ها: چه چیزهایی به شما انگیزه و انرژی می‌دهد؟
+13. سرگرمی‌ها و علایق: سرگرمی‌ها و علایق اصلی شما در اوقات فراغت چیست؟ (مثال: کتاب، فیلم، موسیقی، ورزش، سفر)
+پس از اینکه احساس کردید اطلاعات کافی در این زمینه‌ها جمع‌آوری شده است، یا اگر کاربر دیگر تمایلی به ادامه نداشت، به کاربر اطلاع دهید که می‌تواند با ارسال عبارت "اتمام تست" این مرحله را به پایان برساند تا خلاصه‌ای از اطلاعاتش تهیه شود، یا با ارسال "لغو تست" از ادامه انصراف دهد.
+"""
+
+PROFILE_SUMMARIZATION_PROMPT_PREFIX = """بر اساس مکالمه زیر که شامل پرسش و پاسخ برای تکمیل پروفایل کاربر است، لطفاً یک خلاصه جامع و دقیق از اطلاعات کاربر در قالب 'user_information_summary' تهیه کن. این خلاصه باید شامل نکات کلیدی از تمام جنبه‌های مطرح شده در پروفایل او (سلامتی، شغل، روانشناسی، علایق و غیره) باشد. در صورت امکان و بر اساس پاسخ‌ها، یک تحلیل اولیه از تیپ شخصیتی یا ویژگی‌های روانشناختی بارز کاربر نیز ارائه بده. لطفاً فقط و فقط خود خلاصه نهایی را به صورت یک پاراگراف یا چند پاراگراف منسجم و به زبان فارسی روان برگردان. از اضافه کردن هرگونه عبارت مقدماتی یا پایانی مانند 'بله، حتما' یا 'این هم خلاصه' خودداری کن. فقط متن خلاصه:
+[شروع تاریخچه مکالمه برای خلاصه سازی]
+"""
+PROFILE_SUMMARIZATION_PROMPT_SUFFIX = "\n[پایان تاریخچه مکالمه برای خلاصه سازی]"
+
+CMD_START_SETUP = "تکمیل پروفایل"
+CMD_FINISH_SETUP = "اتمام تست"
+CMD_CANCEL_SETUP = "لغو تست"
 
 
 class RegisterUserView(generics.CreateAPIView):
@@ -176,10 +206,6 @@ class HabitDetail(UserSpecificForeignKeyDetailViewSet):
     serializer_class = HabitSerializer
 
 
-# ----------------------------------------------------
-# New API Views for Metis AI Tool Callbacks
-# ----------------------------------------------------
-
 class ToolUpdateUserProfileDetailsView(APIView):
     permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
@@ -201,15 +227,10 @@ class ToolUpdateUserProfileDetailsView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
         profile_data_for_serializer = request.data.copy()
         profile_data_for_serializer.pop('user_id', None)
-
-        # For OneToOne fields, get_or_create is suitable.
-        # The 'defaults' will only be used if the object is being created.
         defaults_for_create = profile_data_for_serializer.copy()
         profile, created = UserProfile.objects.get_or_create(user=user, defaults=defaults_for_create)
-
         serializer = UserProfileSerializer(profile, data=profile_data_for_serializer, partial=True,
                                            context={'request': request})
         if serializer.is_valid():
@@ -217,10 +238,9 @@ class ToolUpdateUserProfileDetailsView(APIView):
             action_message = 'ایجاد' if created else 'به‌روز'
             response_status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
             logger.info(f"Tool: UserProfile details {action_message} for user {user.phone_number}.")
-            return Response(
-                {"status": "success",
-                 "message": f"جزئیات پروفایل کاربر {user.phone_number} با موفقیت {action_message} شد.",
-                 "data": serializer.data}, status=response_status_code)
+            return Response({"status": "success",
+                             "message": f"جزئیات پروفایل کاربر {user.phone_number} با موفقیت {action_message} شد.",
+                             "data": serializer.data}, status=response_status_code)
         else:
             logger.error(
                 f"Tool: Error updating/creating user profile details for {user.phone_number}: {serializer.errors}")
@@ -251,7 +271,6 @@ class ToolUpdateHealthRecordView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
         health_data_for_serializer = request.data.copy()
         health_data_for_serializer.pop('user_id', None)
         defaults_for_create = health_data_for_serializer.copy()
@@ -263,17 +282,15 @@ class ToolUpdateHealthRecordView(APIView):
             action_message = 'ایجاد' if created else 'به‌روز'
             response_status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
             logger.info(f"Tool: HealthRecord {action_message} for user {user.phone_number}.")
-            return Response({
-                "status": "success",
-                "message": f"اطلاعات سلامتی کاربر {user.phone_number} با موفقیت {action_message} شد.",
-                "data": serializer.data
-            }, status=response_status_code)
+            return Response({"status": "success",
+                             "message": f"اطلاعات سلامتی کاربر {user.phone_number} با موفقیت {action_message} شد.",
+                             "data": serializer.data}, status=response_status_code)
         else:
             logger.error(
                 f"Tool: Error updating/creating HealthRecord for user {user.phone_number}: {serializer.errors}")
-            return Response({
-                "status": "error", "message": "خطا در اعتبارسنجی اطلاعات سلامتی.", "errors": serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"status": "error", "message": "خطا در اعتبارسنجی اطلاعات سلامتی.", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST)
 
 
 class ToolUpdatePsychologicalProfileView(APIView):
@@ -297,12 +314,11 @@ class ToolUpdatePsychologicalProfileView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        profile_data_for_serializer = request.data.copy()
-        profile_data_for_serializer.pop('user_id', None)
-        defaults_for_create = profile_data_for_serializer.copy()
+        data_for_serializer = request.data.copy()
+        data_for_serializer.pop('user_id', None)
+        defaults_for_create = data_for_serializer.copy()
         record, created = PsychologicalProfile.objects.get_or_create(user=user, defaults=defaults_for_create)
-        serializer = PsychologicalProfileSerializer(record, data=profile_data_for_serializer, partial=True,
+        serializer = PsychologicalProfileSerializer(record, data=data_for_serializer, partial=True,
                                                     context={'request': request})
         if serializer.is_valid():
             serializer.save()
@@ -340,12 +356,11 @@ class ToolUpdateCareerEducationView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        career_data_for_serializer = request.data.copy()
-        career_data_for_serializer.pop('user_id', None)
-        defaults_for_create = career_data_for_serializer.copy()
+        data_for_serializer = request.data.copy()
+        data_for_serializer.pop('user_id', None)
+        defaults_for_create = data_for_serializer.copy()
         record, created = CareerEducation.objects.get_or_create(user=user, defaults=defaults_for_create)
-        serializer = CareerEducationSerializer(record, data=career_data_for_serializer, partial=True,
+        serializer = CareerEducationSerializer(record, data=data_for_serializer, partial=True,
                                                context={'request': request})
         if serializer.is_valid():
             serializer.save()
@@ -383,12 +398,11 @@ class ToolUpdateFinancialInfoView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        financial_data_for_serializer = request.data.copy()
-        financial_data_for_serializer.pop('user_id', None)
-        defaults_for_create = financial_data_for_serializer.copy()
+        data_for_serializer = request.data.copy()
+        data_for_serializer.pop('user_id', None)
+        defaults_for_create = data_for_serializer.copy()
         record, created = FinancialInfo.objects.get_or_create(user=user, defaults=defaults_for_create)
-        serializer = FinancialInfoSerializer(record, data=financial_data_for_serializer, partial=True,
+        serializer = FinancialInfoSerializer(record, data=data_for_serializer, partial=True,
                                              context={'request': request})
         if serializer.is_valid():
             serializer.save()
@@ -426,12 +440,11 @@ class ToolUpdateSocialRelationshipView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        social_data_for_serializer = request.data.copy()
-        social_data_for_serializer.pop('user_id', None)
-        defaults_for_create = social_data_for_serializer.copy()
+        data_for_serializer = request.data.copy()
+        data_for_serializer.pop('user_id', None)
+        defaults_for_create = data_for_serializer.copy()
         record, created = SocialRelationship.objects.get_or_create(user=user, defaults=defaults_for_create)
-        serializer = SocialRelationshipSerializer(record, data=social_data_for_serializer, partial=True,
+        serializer = SocialRelationshipSerializer(record, data=data_for_serializer, partial=True,
                                                   context={'request': request})
         if serializer.is_valid():
             serializer.save()
@@ -470,12 +483,11 @@ class ToolUpdatePreferenceInterestView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        preference_data_for_serializer = request.data.copy()
-        preference_data_for_serializer.pop('user_id', None)
-        defaults_for_create = preference_data_for_serializer.copy()
+        data_for_serializer = request.data.copy()
+        data_for_serializer.pop('user_id', None)
+        defaults_for_create = data_for_serializer.copy()
         record, created = PreferenceInterest.objects.get_or_create(user=user, defaults=defaults_for_create)
-        serializer = PreferenceInterestSerializer(record, data=preference_data_for_serializer, partial=True,
+        serializer = PreferenceInterestSerializer(record, data=data_for_serializer, partial=True,
                                                   context={'request': request})
         if serializer.is_valid():
             serializer.save()
@@ -513,12 +525,11 @@ class ToolUpdateEnvironmentalContextView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        env_data_for_serializer = request.data.copy()
-        env_data_for_serializer.pop('user_id', None)
-        defaults_for_create = env_data_for_serializer.copy()
+        data_for_serializer = request.data.copy()
+        data_for_serializer.pop('user_id', None)
+        defaults_for_create = data_for_serializer.copy()
         record, created = EnvironmentalContext.objects.get_or_create(user=user, defaults=defaults_for_create)
-        serializer = EnvironmentalContextSerializer(record, data=env_data_for_serializer, partial=True,
+        serializer = EnvironmentalContextSerializer(record, data=data_for_serializer, partial=True,
                                                     context={'request': request})
         if serializer.is_valid():
             serializer.save()
@@ -556,13 +567,12 @@ class ToolUpdateRealTimeDataView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        realtime_data_for_serializer = request.data.copy()
-        realtime_data_for_serializer.pop('user_id', None)
-        realtime_data_for_serializer.pop('timestamp', None)
-        defaults_for_create = realtime_data_for_serializer.copy()
+        data_for_serializer = request.data.copy()
+        data_for_serializer.pop('user_id', None)
+        data_for_serializer.pop('timestamp', None)
+        defaults_for_create = data_for_serializer.copy()
         record, created = RealTimeData.objects.get_or_create(user=user, defaults=defaults_for_create)
-        serializer = RealTimeDataSerializer(record, data=realtime_data_for_serializer, partial=True,
+        serializer = RealTimeDataSerializer(record, data=data_for_serializer, partial=True,
                                             context={'request': request})
         if serializer.is_valid():
             serializer.save()
@@ -581,7 +591,7 @@ class ToolUpdateRealTimeDataView(APIView):
 
 class ToolUpdateFeedbackLearningView(APIView):
     permission_classes = [IsMetisToolCallback]
-    http_method_names = ['post']  # Changed to POST for creating new feedback, as FeedbackLearning is ForeignKey
+    http_method_names = ['post']
 
     def post(self, request, *args, **kwargs):
         logger.info(f"Tool {self.__class__.__name__} (POST) - Request Query Params: {request.query_params}")
@@ -600,18 +610,16 @@ class ToolUpdateFeedbackLearningView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
         feedback_data_for_serializer = request.data.copy()
         feedback_data_for_serializer.pop('user_id', None)
         feedback_data_for_serializer.pop('timestamp', None)
-
         serializer = FeedbackLearningSerializer(data=feedback_data_for_serializer, context={'request': request})
         if serializer.is_valid():
             serializer.save(user=user)
             logger.info(f"Tool: New FeedbackLearning created for user {user.phone_number}.")
-            return Response({"status": "success",
-                             "message": f"بازخورد جدید برای کاربر {user.phone_number} با موفقیت ایجاد شد.",
-                             "data": serializer.data}, status=status.HTTP_201_CREATED)
+            return Response(
+                {"status": "success", "message": f"بازخورد جدید برای کاربر {user.phone_number} با موفقیت ایجاد شد.",
+                 "data": serializer.data}, status=status.HTTP_201_CREATED)
         else:
             logger.error(f"Tool: Error creating FeedbackLearning for user {user.phone_number}: {serializer.errors}")
             return Response(
@@ -640,7 +648,6 @@ class ToolCreateGoalView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
         goal_data_for_serializer = request.data.copy()
         goal_data_for_serializer.pop('user_id', None)
         serializer = GoalSerializer(data=goal_data_for_serializer, context={'request': request})
@@ -682,7 +689,6 @@ class ToolUpdateGoalView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
         goal = get_object_or_404(Goal, pk=pk_int, user=user)
         goal_data_for_serializer = request.data.copy()
         goal_data_for_serializer.pop('user_id', None)
@@ -727,7 +733,6 @@ class ToolDeleteGoalView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
         goal = get_object_or_404(Goal, pk=pk_int, user=user)
         goal.delete()
         logger.info(f"Tool: Goal {pk_int} deleted for user {user.phone_number}.")
@@ -756,7 +761,6 @@ class ToolCreateHabitView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
         habit_data_for_serializer = request.data.copy()
         habit_data_for_serializer.pop('user_id', None)
         serializer = HabitSerializer(data=habit_data_for_serializer, context={'request': request})
@@ -775,7 +779,7 @@ class ToolUpdateHabitView(APIView):
     permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
-    def patch(self, request, pk, *args, **kwargs):  # pk from URL
+    def patch(self, request, pk, *args, **kwargs):
         logger.info(f"Tool {self.__class__.__name__} - Request Query Params: {request.query_params}")
         logger.info(f"Tool {self.__class__.__name__} - Request Data: {request.data}")
         logger.info(f"Tool {self.__class__.__name__} - PK from URL: {pk}")
@@ -794,7 +798,6 @@ class ToolUpdateHabitView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
         habit = get_object_or_404(Habit, pk=pk_int, user=user)
         habit_data_for_serializer = request.data.copy()
         habit_data_for_serializer.pop('user_id', None)
@@ -815,18 +818,16 @@ class ToolDeleteHabitView(APIView):
     permission_classes = [IsMetisToolCallback]
     http_method_names = ['delete']
 
-    def delete(self, request, pk, *args, **kwargs):  # pk from URL
+    def delete(self, request, pk, *args, **kwargs):
         logger.info(f"Tool {self.__class__.__name__} - Request Query Params: {request.query_params}")
         logger.info(f"Tool {self.__class__.__name__} - Request Data: {request.data}")
         logger.info(f"Tool {self.__class__.__name__} - PK from URL: {pk}")
         user_id = request.data.get('user_id')
-
         if not user_id:
             logger.error(
                 f"Tool {self.__class__.__name__}: 'user_id' must be provided in request data for DELETE with PK in URL.")
             return Response({"error": "User ID ('user_id') is required in the request data for this operation."},
                             status=status.HTTP_400_BAD_REQUEST)
-
         try:
             user_id_int = int(user_id)
             pk_int = int(pk)
@@ -837,9 +838,7 @@ class ToolDeleteHabitView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
         habit = get_object_or_404(Habit, pk=pk_int, user=user)
-
         habit_owner_phone = habit.user.phone_number
         habit.delete()
         logger.info(f"Tool: Habit {pk_int} deleted for user {habit_owner_phone}.")
@@ -868,7 +867,6 @@ class ToolCreatePsychTestRecordView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
         test_data_for_serializer = request.data.copy()
         test_data_for_serializer.pop('user_id', None)
         serializer = PsychTestHistorySerializer(data=test_data_for_serializer, context={'request': request})
@@ -913,7 +911,6 @@ class ToolUpdatePsychTestRecordView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
         psych_test_record = get_object_or_404(PsychTestHistory, pk=pk_int, user=user)
         test_data_for_serializer = request.data.copy()
         test_data_for_serializer.pop('user_id', None)
@@ -961,7 +958,6 @@ class ToolDeletePsychTestRecordView(APIView):
         except User.DoesNotExist:
             logger.error(f"Tool {self.__class__.__name__}: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
         psych_test_record = get_object_or_404(PsychTestHistory, pk=pk_int, user=user)
         psych_test_record.delete()
         logger.info(f"Tool: PsychTestHistory record {pk_int} deleted for user {user.phone_number}.")
@@ -971,9 +967,8 @@ class ToolDeletePsychTestRecordView(APIView):
 
 
 # ----------------------------------------------------
-# AIAgentChatView (Modified for Metis AI Function Calling flow)
+# AIAgentChatView (با منطق تست پویا و خلاصه‌سازی)
 # ----------------------------------------------------
-
 class AIAgentChatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     http_method_names = ['post']
@@ -983,28 +978,19 @@ class AIAgentChatView(APIView):
         return super().dispatch(request, *args, **kwargs)
 
     def _get_active_sessions_for_user(self, user):
-        AiResponse.objects.filter(
-            user=user,
-            expires_at__lte=timezone.now(),
-            is_active=True
-        ).update(is_active=False)
+        AiResponse.objects.filter(user=user, expires_at__lte=timezone.now(), is_active=True).update(is_active=False)
         return AiResponse.objects.filter(user=user, is_active=True)
 
-    def _check_message_limit(self, user_profile):
+    def _check_message_limit(self, user_profile: UserProfile):
         if not user_profile.role:
             logger.warning(f"User {user_profile.user.phone_number} has no role assigned. Skipping message limit check.")
             return True
         now = timezone.localdate()
         if user_profile.last_message_date != now:
             user_profile.messages_sent_today = 0
-            user_profile.last_message_date = now
-        if user_profile.messages_sent_today >= user_profile.role.daily_message_limit:
-            logger.warning(
-                f"User {user_profile.user.phone_number} reached daily message limit ({user_profile.role.daily_message_limit}).")
-            return False
-        return True
+        return user_profile.messages_sent_today < user_profile.role.daily_message_limit
 
-    def _increment_message_count(self, user_profile):
+    def _increment_message_count(self, user_profile: UserProfile):
         now = timezone.localdate()
         if user_profile.last_message_date != now:
             user_profile.messages_sent_today = 0
@@ -1025,80 +1011,47 @@ class AIAgentChatView(APIView):
             f"Simplified user_info for Metis API (session creation): {json.dumps(user_obj, ensure_ascii=False)}")
         return user_obj
 
-    def _get_user_context_for_ai(self, user_profile: UserProfile):
+    def _get_user_context_for_ai(self, user_profile: UserProfile, for_setup_prompt: bool = False):
+        if for_setup_prompt:
+            return PROFILE_SETUP_SYSTEM_PROMPT
+
         context_parts = []
-        profile_info_items = [f"شماره موبایل کاربر فعلی: {user_profile.user.phone_number}"]
-        if user_profile.first_name: profile_info_items.append(f"نام: {user_profile.first_name}")
-        if user_profile.last_name: profile_info_items.append(f"نام خانوادگی: {user_profile.last_name}")
-        if user_profile.age is not None: profile_info_items.append(f"سن: {user_profile.age}")
-        if user_profile.gender: profile_info_items.append(f"جنسیت: {user_profile.gender}")
-        if user_profile.nationality: profile_info_items.append(f"ملیت: {user_profile.nationality}")
-        if user_profile.location: profile_info_items.append(f"مکان: {user_profile.location}")
-        if user_profile.marital_status: profile_info_items.append(f"وضعیت تأهل: {user_profile.marital_status}")
-        if profile_info_items: context_parts.append(
-            "اطلاعات پایه و هویتی کاربر:\n" + "\n".join([f"- {item}" for item in profile_info_items]))
-        if user_profile.languages: context_parts.append(f"زبان‌ها: {user_profile.languages}")
-        if user_profile.cultural_background: context_parts.append(f"پیشینه فرهنگی: {user_profile.cultural_background}")
-        try:
-            hr = user_profile.user.health_record
-            health_details = []
-            if hr.medical_history: health_details.append(f"تاریخچه پزشکی: {hr.medical_history}")
-            if hr.chronic_conditions: health_details.append(f"بیماری‌های مزمن: {hr.chronic_conditions}")
-            if hr.allergies: health_details.append(f"آلرژی‌ها: {hr.allergies}")
-            if hr.diet_type: health_details.append(f"رژیم غذایی: {hr.diet_type}")
-            if hr.physical_activity_level: health_details.append(f"سطح فعالیت بدنی: {hr.physical_activity_level}")
-            if hr.mental_health_status: health_details.append(f"وضعیت سلامت روان: {hr.mental_health_status}")
-            if hr.medications: health_details.append(f"داروهای مصرفی: {hr.medications}")
-            if health_details: context_parts.append(
-                "سوابق سلامتی:\n" + "\n".join([f"- {item}" for item in health_details]))
-        except HealthRecord.DoesNotExist:
-            pass
-        try:
-            psych_profile = user_profile.user.psychological_profile
-            psych_details = []
-            if psych_profile.personality_type: psych_details.append(f"تیپ شخصیتی: {psych_profile.personality_type}")
-            if psych_profile.core_values: psych_details.append(f"ارزش‌های اصلی: {psych_profile.core_values}")
-            if psych_profile.motivations: psych_details.append(f"انگیزه‌ها: {psych_profile.motivations}")
-            if psych_profile.decision_making_style: psych_details.append(
-                f"سبک تصمیم‌گیری: {psych_profile.decision_making_style}")
-            if psych_profile.stress_response: psych_details.append(f"واکنش به استرس: {psych_profile.stress_response}")
-            if psych_profile.emotional_triggers: psych_details.append(
-                f"محرک‌های احساسی: {psych_profile.emotional_triggers}")
-            if psych_profile.preferred_communication: psych_details.append(
-                f"سبک ارتباطی ترجیحی: {psych_profile.preferred_communication}")
-            if psych_profile.resilience_level: psych_details.append(f"سطح تاب‌آوری: {psych_profile.resilience_level}")
-            if psych_details: context_parts.append(
-                "پروفایل روانشناختی:\n" + "\n".join([f"- {item}" for item in psych_details]))
-        except PsychologicalProfile.DoesNotExist:
-            pass
-        if user_profile.user_information_summary: context_parts.append(
-            f"خلاصه جامع کاربر (تولید شده توسط AI یا خلاصه‌نویسی شده):\n{user_profile.user_information_summary}")
+        if user_profile.user_information_summary:
+            context_parts.append(
+                f"خلاصه اطلاعات کاربر (برای استفاده در پاسخ‌ها):\n{user_profile.user_information_summary}")
+        else:
+            profile_info_items = [f"شماره موبایل کاربر فعلی: {user_profile.user.phone_number}"]
+            if user_profile.first_name: profile_info_items.append(f"نام: {user_profile.first_name}")
+            if user_profile.last_name: profile_info_items.append(f"نام خانوادگی: {user_profile.last_name}")
+            if user_profile.age is not None: profile_info_items.append(f"سن: {user_profile.age}")
+            if profile_info_items: context_parts.append(
+                "اطلاعات پایه و هویتی کاربر:\n" + "\n".join([f"- {item}" for item in profile_info_items]))
+            context_parts.append(
+                "اطلاعات پروفایل کاربر هنوز تکمیل نشده است. می‌توانید از کاربر بخواهید با ارسال 'تکمیل پروفایل' اطلاعات خود را وارد کند.")
+
         full_context = "\n\n".join(filter(None, context_parts))
         logger.debug(
-            f"Generated AI context for user {user_profile.user.phone_number}: Context length: {len(full_context)}")
-        if len(full_context) > 15000:  # Example limit, adjust as needed
-            logger.warning(
-                f"Generated AI context for user {user_profile.user.phone_number} is very long: {len(full_context)} chars. Truncating or summarizing might be needed if API limits are hit.")
+            f"Generated AI context (normal chat) for user {user_profile.user.phone_number}: {full_context[:300]}...")
         return full_context
 
     def post(self, request, *args, **kwargs):
         user = request.user
         user_profile = get_object_or_404(UserProfile, user=user)
-        user_message_content = request.data.get('message')
+        user_message_content = request.data.get('message', "").strip()
         session_id_from_request = request.data.get('session_id')
-        is_psych_test = request.data.get('is_psych_test', False)
-        personality_type = None
-        metis_ai_response_content = None
-        current_session_instance = None
+
+        ai_final_response_content = "خطایی در پردازش رخ داد، لطفا مجددا تلاش کنید."
+        # final_session_id_to_return = session_id_from_request # این مقدار ممکن است None باشد یا تغییر کند
+        final_session_id_to_return = None
+        final_chat_history = []
+        http_status_code = status.HTTP_500_INTERNAL_SERVER_ERROR  # پیش‌فرض خطا
 
         if not user_message_content:
             return Response({'detail': 'محتوای پیام الزامی است.'}, status=status.HTTP_400_BAD_REQUEST)
-        if not self._check_message_limit(user_profile):
-            return Response({'detail': 'محدودیت پیام روزانه شما به پایان رسیده است.'},
-                            status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         metis_service = MetisAIService()
         active_sessions = self._get_active_sessions_for_user(user)
+        current_session_instance = None
 
         try:
             with transaction.atomic():
@@ -1111,119 +1064,208 @@ class AIAgentChatView(APIView):
                             logger.warning(
                                 f"Session {session_id_from_request} for user {user.phone_number} has expired.")
                             current_session_instance = None
-                        else:
-                            logger.info(
-                                f"Continuing existing Metis AI session {current_session_instance.metis_session_id} for user {user.phone_number}")
-                            metis_response_data = metis_service.send_message(
-                                session_id=current_session_instance.metis_session_id,
-                                content=user_message_content, message_type="USER")
-                            metis_ai_response_content = metis_response_data.get('content',
-                                                                                'پاسخی از طرف دستیار دریافت نشد.')
-                            current_session_instance.add_to_chat_history("user", user_message_content)
-                            current_session_instance.add_to_chat_history("assistant", metis_ai_response_content)
                     else:
                         logger.warning(
                             f"Session ID {session_id_from_request} provided but not found or inactive for user {user.phone_number}.")
-                        # Decide: either create a new session or return error.
-                        # For now, let's try to create a new one if not found.
-                        current_session_instance = None  # Ensure new session creation if ID was invalid
-
-                if not current_session_instance:
-                    logger.info(
-                        f"No valid active session found or provided. Attempting to create a new session for user {user.phone_number}.")
-                    if not is_psych_test and user_profile.role and active_sessions.count() >= user_profile.role.max_active_sessions:
                         return Response({
-                                            'detail': f'شما به حداکثر تعداد جلسات فعال ({user_profile.role.max_active_sessions}) رسیده‌اید.'},
+                                            'detail': 'جلسه نامعتبر است یا منقضی شده. لطفا بدون session_id برای ایجاد جلسه جدید تلاش کنید یا یک session_id معتبر ارسال کنید.'},
                                         status=status.HTTP_400_BAD_REQUEST)
 
-                    initial_metis_messages = []
-                    user_context_for_ai = self._get_user_context_for_ai(user_profile)
-                    if user_context_for_ai: initial_metis_messages.append(
-                        {"type": "USER", "content": user_context_for_ai})
-                    initial_metis_messages.append({"type": "USER", "content": user_message_content})
+                # مدیریت شروع "تست پویا"
+                if user_message_content.lower() == CMD_START_SETUP.lower() and not user_profile.is_in_profile_setup:
+                    can_start_setup = True
+                    if user_profile.role and user_profile.last_form_submission_time:
+                        interval = timedelta(hours=user_profile.role.form_submission_interval_hours)
+                        if timezone.now() < user_profile.last_form_submission_time + interval:
+                            can_start_setup = False
+                            time_remaining = (user_profile.last_form_submission_time + interval) - timezone.now()
+                            hours_rem = int(time_remaining.total_seconds() / 3600)
+                            minutes_rem = int((time_remaining.total_seconds() % 3600) / 60)
+                            ai_final_response_content = f"شما فقط هر {user_profile.role.form_submission_interval_hours} ساعت یکبار می‌توانید اطلاعات پروفایل را تکمیل یا اصلاح کنید. لطفاً پس از حدود {hours_rem} ساعت و {minutes_rem} دقیقه دیگر تلاش کنید."
+                            http_status_code = status.HTTP_429_TOO_MANY_REQUESTS
+                            final_session_id_to_return = str(
+                                current_session_instance.ai_session_id) if current_session_instance else None
+                            final_chat_history = current_session_instance.get_chat_history() if current_session_instance else []
+                            return Response(
+                                {'ai_response': ai_final_response_content, 'session_id': final_session_id_to_return,
+                                 'chat_history': final_chat_history}, status=http_status_code)
+
+                    if can_start_setup:
+                        user_profile.is_in_profile_setup = True
+                        user_profile.save(update_fields=['is_in_profile_setup'])
+                        logger.info(f"User {user.phone_number} started profile setup.")
+                        current_session_instance = None
+
+                        initial_messages_for_setup = [
+                            {"type": "SYSTEM", "content": PROFILE_SETUP_SYSTEM_PROMPT},
+                            {"type": "USER", "content": "سلام، لطفا برای تکمیل پروفایلم از من سوال بپرسید."}
+                        ]
+                        metis_response = metis_service.create_chat_session(
+                            bot_id=metis_service.bot_id,
+                            user_data=self._get_user_info_for_metis_api(user_profile),
+                            initial_messages=initial_messages_for_setup
+                        )
+                        metis_session_id = metis_response.get('id')
+                        ai_final_response_content = metis_response.get('content',
+                                                                       'سلام! برای شروع، لطفاً در مورد سوابق پزشکی خود توضیح دهید.')
+
+                        if not metis_session_id:
+                            logger.error(
+                                f"Failed to create Metis session for profile setup for user {user.phone_number}. Response: {metis_response}")
+                            user_profile.is_in_profile_setup = False;
+                            user_profile.save(update_fields=['is_in_profile_setup'])
+                            return Response({"error": "خطا در ایجاد جلسه تنظیم پروفایل با سرویس دستیار."},
+                                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                        current_session_instance = AiResponse.objects.create(
+                            user=user, ai_session_id=str(uuid.uuid4()), metis_session_id=metis_session_id,
+                            ai_response_name=f"Profile Setup - {user.phone_number}",
+                            expires_at=timezone.now() + timedelta(
+                                hours=user_profile.role.session_duration_hours if user_profile.role else 24)
+                        )
+                        current_session_instance.add_to_chat_history("system", PROFILE_SETUP_SYSTEM_PROMPT)
+                        current_session_instance.add_to_chat_history("user", CMD_START_SETUP)
+                        current_session_instance.add_to_chat_history("assistant", ai_final_response_content)
+                        # Fall through to common save and response logic
+
+                # اگر کاربر در حال تنظیم پروفایل است و دستوری برای اتمام/لغو نداده
+                elif user_profile.is_in_profile_setup and user_message_content.lower() not in [CMD_FINISH_SETUP.lower(),
+                                                                                               CMD_CANCEL_SETUP.lower()]:
+                    if not current_session_instance:
+                        logger.error(f"User {user.phone_number} in profile setup but no active session for continuing.")
+                        return Response(
+                            {"detail": "جلسه تنظیم پروفایل شما یافت نشد. لطفاً با 'تکمیل پروفایل' دوباره شروع کنید."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
                     logger.info(
-                        f"Starting new Metis AI session for user {user.phone_number} with {len(initial_metis_messages)} initial messages.")
-                    user_data_for_metis = self._get_user_info_for_metis_api(user_profile)
-
-                    # Removed 'functions' parameter from create_chat_session
-                    metis_response = metis_service.create_chat_session(
-                        bot_id=metis_service.bot_id,
-                        user_data=user_data_for_metis,
-                        initial_messages=initial_metis_messages
-                    )
-                    metis_session_id = metis_response.get('id')
-                    metis_ai_response_content = metis_response.get('content',
-                                                                   'پاسخی از طرف دستیار دریافت نشد (هنگام ایجاد جلسه).')
-
-                    if not metis_session_id:
-                        logger.error(
-                            f"Failed to create Metis session for user {user.phone_number}. Response: {metis_response}")
-                        return Response({"error": "خطا در ایجاد جلسه با سرویس دستیار هوشمند."},
-                                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-                    session_name = "Psychological Test" if is_psych_test else f"Chat Session {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
-                    duration_hours = 24
-                    if user_profile.role:
-                        duration_hours = user_profile.role.psych_test_duration_hours if is_psych_test else user_profile.role.session_duration_hours
-                    else:
-                        logger.warning(
-                            f"User {user_profile.user.phone_number} has no role, using default session duration.")
-
-                    current_session_instance = AiResponse.objects.create(
-                        user=user, ai_session_id=str(uuid.uuid4()), metis_session_id=metis_session_id,
-                        ai_response_name=session_name,
-                        expires_at=timezone.now() + timezone.timedelta(hours=duration_hours))
-
-                    if user_context_for_ai: current_session_instance.add_to_chat_history("system",
-                                                                                         f"Initial context: {user_context_for_ai}")
+                        f"Continuing profile setup for user {user.phone_number}. Message: {user_message_content}")
+                    metis_response_data = metis_service.send_message(
+                        session_id=current_session_instance.metis_session_id,
+                        content=user_message_content, message_type="USER")
+                    ai_final_response_content = metis_response_data.get('content', 'پاسخی از طرف دستیار دریافت نشد.')
                     current_session_instance.add_to_chat_history("user", user_message_content)
-                    current_session_instance.add_to_chat_history("assistant", metis_ai_response_content)
+                    current_session_instance.add_to_chat_history("assistant", ai_final_response_content)
 
-                    if is_psych_test:
-                        PsychTestHistory.objects.create(user=user, test_name="MBTI Psychological Test",
-                                                        test_result_summary="تست در حال انجام است.",
-                                                        full_test_data=None,
-                                                        ai_analysis="تحلیل تست پس از تکمیل انجام خواهد شد.")
+                # مدیریت اتمام یا لغو "تست پویا"
+                elif user_profile.is_in_profile_setup and user_message_content.lower() == CMD_FINISH_SETUP.lower():
+                    if not current_session_instance:
+                        return Response({"detail": "جلسه‌ای برای اتمام تست یافت نشد."},
+                                        status=status.HTTP_400_BAD_REQUEST)
+                    logger.info(f"User {user.phone_number} requested to finish profile setup.")
+                    current_session_instance.add_to_chat_history("user", user_message_content)
 
-                if is_psych_test and metis_ai_response_content:
+                    setup_chat_history = current_session_instance.get_chat_history()
+                    history_text_for_prompt = "\n".join(
+                        [f"کاربر: {msg['content']}" if msg['role'] == 'user' else f"دستیار: {msg['content']}" for msg in
+                         setup_chat_history if msg['role'] != 'system'])
+                    full_prompt_for_summarization = PROFILE_SUMMARIZATION_PROMPT_PREFIX + history_text_for_prompt + PROFILE_SUMMARIZATION_PROMPT_SUFFIX
+
+                    logger.info(f"Sending compiled setup chat to Metis for summarization for user {user.phone_number}.")
                     try:
-                        if isinstance(metis_ai_response_content, str):
-                            try:
-                                parsed_content = json.loads(metis_ai_response_content)
-                                if isinstance(parsed_content,
-                                              dict) and 'personality_type' in parsed_content: personality_type = \
-                                parsed_content['personality_type']
-                            except json.JSONDecodeError:
-                                logger.debug(f"Psych test AI response is not direct JSON: {metis_ai_response_content}")
-                        elif isinstance(metis_ai_response_content,
-                                        dict) and 'personality_type' in metis_ai_response_content:
-                            personality_type = metis_ai_response_content['personality_type']
-                    except Exception as e_parse:
-                        logger.error(f"Error parsing personality_type from AI response: {e_parse}")
-                    if personality_type:
-                        user_profile.ai_psychological_test = json.dumps(
-                            {"responses": current_session_instance.get_chat_history(),
-                             "personality_type": personality_type}, ensure_ascii=False)
-                        user_profile.save(update_fields=['ai_psychological_test'])
-                        current_session_instance.is_active = False
-                        psych_test_record = PsychTestHistory.objects.filter(user=user,
-                                                                            test_name="MBTI Psychological Test").order_by(
-                            '-test_date').first()
-                        if psych_test_record and psych_test_record.test_result_summary == "تست در حال انجام است.":
-                            psych_test_record.test_result_summary = f"تیپ شخصیتی: {personality_type}"
-                            psych_test_record.full_test_data = current_session_instance.get_chat_history()
-                            psych_test_record.ai_analysis = metis_ai_response_content
-                            psych_test_record.save()
+                        summary_response = metis_service.send_message(
+                            session_id=current_session_instance.metis_session_id,  # Use existing session for summary
+                            content=full_prompt_for_summarization, message_type="USER"
+                        )
+                        summary_text = summary_response.get('content')
+                        if summary_text:
+                            user_profile.user_information_summary = summary_text
+                            ai_final_response_content = f"اطلاعات پروفایل شما با موفقیت دریافت و خلاصه‌سازی شد."
+                            current_session_instance.add_to_chat_history("assistant",
+                                                                         ai_final_response_content + f"\nخلاصه دریافت شده:\n{summary_text}")
+                            logger.info(f"Profile summary generated for user {user.phone_number}.")
+                        else:
+                            ai_final_response_content = "متاسفانه در حال حاضر امکان خلاصه‌سازی اطلاعات شما وجود ندارد. اما اطلاعات شما در طول چت ذخیره شده است."
+                            current_session_instance.add_to_chat_history("assistant", ai_final_response_content)
+                            logger.error(
+                                f"Metis failed to generate summary for user {user.phone_number}. Response: {summary_response}")
+                    except Exception as e_summary:
+                        logger.error(f"Error calling Metis for summarization for user {user.phone_number}: {e_summary}",
+                                     exc_info=True)
+                        ai_final_response_content = "خطا در ارتباط با سرویس خلاصه‌ساز. اطلاعات شما در طول چت ذخیره شد اما خلاصه‌سازی انجام نشد."
+                        current_session_instance.add_to_chat_history("assistant", ai_final_response_content)
 
-                current_session_instance.save()
-                self._increment_message_count(user_profile)
+                    user_profile.is_in_profile_setup = False
+                    user_profile.last_form_submission_time = timezone.now()
+                    user_profile.save(
+                        update_fields=['is_in_profile_setup', 'last_form_submission_time', 'user_information_summary'])
+                    current_session_instance.is_active = False
+                    # No increment message count here as it's end of special flow
+
+                elif user_profile.is_in_profile_setup and user_message_content.lower() == CMD_CANCEL_SETUP.lower():
+                    logger.info(f"User {user.phone_number} cancelled profile setup.")
+                    user_profile.is_in_profile_setup = False
+                    user_profile.save(update_fields=['is_in_profile_setup'])
+                    ai_final_response_content = "تکمیل پروفایل لغو شد. شما می‌توانید هر زمان خواستید با ارسال 'تکمیل پروفایل' این فرآیند را مجددا شروع کنید."
+                    if current_session_instance:
+                        current_session_instance.add_to_chat_history("user", user_message_content)
+                        current_session_instance.add_to_chat_history("assistant", ai_final_response_content)
+                        current_session_instance.is_active = False
+                    # No increment message count here
+
+                # چت عادی (کاربر در مد تنظیم پروفایل نیست و دستور خاصی هم نداده)
+                else:
+                    if not self._check_message_limit(user_profile):
+                        return Response({'detail': 'محدودیت پیام روزانه شما به پایان رسیده است.'},
+                                        status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+                    if not current_session_instance:
+                        logger.info(f"Starting new NORMAL chat session for user {user.phone_number}.")
+                        initial_metis_messages = [{"type": "SYSTEM",
+                                                   "content": self._get_user_context_for_ai(user_profile,
+                                                                                            for_setup_prompt=False)}]
+                        initial_metis_messages.append({"type": "USER", "content": user_message_content})
+
+                        metis_response = metis_service.create_chat_session(
+                            bot_id=metis_service.bot_id,
+                            user_data=self._get_user_info_for_metis_api(user_profile),
+                            initial_messages=initial_metis_messages
+                        )
+                        metis_session_id = metis_response.get('id')
+                        ai_final_response_content = metis_response.get('content',
+                                                                       'پاسخی از طرف دستیار دریافت نشد (هنگام ایجاد جلسه عادی).')
+                        if not metis_session_id:
+                            logger.error(
+                                f"Failed to create Metis normal session for user {user.phone_number}. Response: {metis_response}")
+                            return Response({"error": "خطا در ایجاد جلسه عادی با سرویس دستیار."},
+                                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                        current_session_instance = AiResponse.objects.create(
+                            user=user, ai_session_id=str(uuid.uuid4()), metis_session_id=metis_session_id,
+                            ai_response_name=f"Chat - {user.phone_number} - {datetime.datetime.now().strftime('%H:%M')}",
+                            expires_at=timezone.now() + timedelta(
+                                hours=user_profile.role.session_duration_hours if user_profile.role else 24)
+                        )
+                        current_session_instance.add_to_chat_history("system",
+                                                                     self._get_user_context_for_ai(user_profile,
+                                                                                                   for_setup_prompt=False))
+                        current_session_instance.add_to_chat_history("user", user_message_content)
+                        current_session_instance.add_to_chat_history("assistant", ai_final_response_content)
+                    # If current_session_instance already existed and was not a setup command, it means it was handled at the beginning.
+                    # The metis_ai_response_content would already be populated.
+
+                # ذخیره نهایی و افزایش شمارنده پیام
+                if current_session_instance:
+                    current_session_instance.save()
+                    # شمارنده پیام فقط برای پیام‌های عادی یا پیام‌های طی فرآیند تنظیم پروفایل (به جز دستورات خاص)
+                    if not (user_profile.is_in_profile_setup and user_message_content.lower() in [
+                        CMD_FINISH_SETUP.lower(), CMD_CANCEL_SETUP.lower()]) and \
+                            not (
+                                    user_message_content.lower() == CMD_START_SETUP.lower()):  # اگر شروع تست بود، بالا شمرده شد
+                        self._increment_message_count(user_profile)
+
+                    final_session_id_to_return = str(current_session_instance.ai_session_id)
+                    final_chat_history = current_session_instance.get_chat_history()
+                    http_status_code = status.HTTP_200_OK  # Default to OK if processing reached here
+                else:  # Should not happen if logic is correct, but as a fallback
+                    ai_final_response_content = "جلسه‌ای برای پردازش درخواست شما یافت نشد."
+                    http_status_code = status.HTTP_400_BAD_REQUEST
+
                 return Response({
-                    'ai_response': metis_ai_response_content,
-                    'session_id': str(current_session_instance.ai_session_id),
-                    'chat_history': current_session_instance.get_chat_history(),
-                    'personality_type': personality_type
-                }, status=status.HTTP_200_OK)
+                    'ai_response': ai_final_response_content,
+                    'session_id': final_session_id_to_return,
+                    'chat_history': final_chat_history,
+                }, status=http_status_code)
+
         except ConnectionError as e_conn:
             logger.error(f"Metis AI Connection Error in AIAgentChatView for user {user.phone_number}: {e_conn}",
                          exc_info=True)
@@ -1262,7 +1304,22 @@ class AiChatSessionDetail(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return self.queryset.filter(user=self.request.user)
+        return self.queryset.filter(user=self.request.user)  # pk type will be determined by model's PK field
+
+    def get_object(self):  # Override to lookup by ai_session_id if it's UUID string
+        queryset = self.get_queryset()
+        pk = self.kwargs.get(self.lookup_field)
+        try:
+            # Try to convert pk to UUID if your ai_session_id is UUID
+            uuid_pk = uuid.UUID(pk)
+            return get_object_or_404(queryset, ai_session_id=str(uuid_pk))
+        except ValueError:
+            # Fallback to integer PK if not a valid UUID (or handle error)
+            try:
+                int_pk = int(pk)
+                return get_object_or_404(queryset, pk=int_pk)
+            except ValueError:
+                raise Http404("Session not found with the provided ID format.")
 
     def perform_destroy(self, instance):
         metis_service = MetisAIService()
@@ -1283,7 +1340,7 @@ class AiChatSessionDetail(generics.RetrieveUpdateDestroyAPIView):
 
 
 class TestTimeView(APIView):
-    permission_classes = [IsMetisToolCallback]  # بازگرداندن به حالت اولیه یا AllowAny برای تست بدون توکن
+    permission_classes = [IsMetisToolCallback]
 
     def get(self, request, *args, **kwargs):
         logger.info(f"Tool {self.__class__.__name__} - Request Query Params: {request.query_params}")
@@ -1293,9 +1350,6 @@ class TestTimeView(APIView):
         return Response({"currentTime": now, "status": "ok", "message": "Test endpoint for Metis tool is working!"})
 
 
-# ----------------------------------------------------
-# Psych Test History Views
-# ----------------------------------------------------
 class PsychTestHistoryView(generics.ListCreateAPIView):
     queryset = PsychTestHistory.objects.all()
     serializer_class = PsychTestHistorySerializer
