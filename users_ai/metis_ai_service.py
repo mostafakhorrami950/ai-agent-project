@@ -37,7 +37,6 @@ class MetisAIService:
             logger.debug(f"[_make_request] Attempting request to {method} {url}")
             logger.debug(f"[_make_request] Request Headers: {self.headers}")
             if json_data:
-                # لاگ کردن JSON ارسالی
                 logger.debug(
                     f"[_make_request] Request JSON Data: {json.dumps(json_data, indent=2, ensure_ascii=False)}")
             if params:
@@ -48,7 +47,6 @@ class MetisAIService:
             logger.debug(f"[_make_request] Response Status: {response.status_code}")
             try:
                 response_json = response.json()
-                # لاگ کردن JSON دریافتی
                 logger.debug(
                     f"[_make_request] Response JSON Body: {json.dumps(response_json, indent=2, ensure_ascii=False)}")
                 return response_json
@@ -78,7 +76,7 @@ class MetisAIService:
             "enabled": enabled,
             "providerConfig": provider_config,
             "instructions": instructions,
-            "functions": functions if functions is not None else [],  # اطمینان از ارسال لیست خالی به جای None
+            "functions": functions if functions is not None else [],
             "corpusIds": corpus_ids if corpus_ids is not None else []
         }
         return self._make_request("POST", "bot_management", endpoint, json_data=data)
@@ -93,9 +91,9 @@ class MetisAIService:
         if provider_config is not None: data["providerConfig"] = provider_config
         if instructions is not None: data["instructions"] = instructions
         if functions is not None:
-            data["functions"] = functions  # ارسال لیست توابع
+            data["functions"] = functions
         else:
-            data["functions"] = []  # ارسال لیست خالی به جای None برای توابع
+            data["functions"] = []
         if corpus_ids is not None: data["corpusIds"] = corpus_ids
         if description is not None: data["description"] = description
         if avatar is not None: data["avatar"] = avatar
@@ -120,14 +118,13 @@ class MetisAIService:
         endpoint = "session"
         data = {
             "botId": bot_id,
-            "user": user_data if user_data is not None else {},  # اطمینان از ارسال دیکشنری خالی به جای None
+            "user": user_data if user_data is not None else {},
             "initialMessages": initial_messages if initial_messages is not None else []
-            # اطمینان از ارسال لیست خالی به جای None
         }
         if functions is not None:
             data["functions"] = functions
         else:
-            data["functions"] = []  # اطمینان از ارسال لیست خالی به جای None برای توابع
+            data["functions"] = []
 
         logger.debug(f"[create_chat_session] Data: {json.dumps(data, indent=2, ensure_ascii=False)}")
         return self._make_request("POST", "chat", endpoint, json_data=data)
@@ -164,6 +161,11 @@ class MetisAIService:
 
     @staticmethod
     def get_tool_schemas_for_metis_bot():
+        """
+        Generates the list of tool schemas for Metis AI to consume.
+        These schemas define the functions Metis AI can call on your Django API.
+        The `url` field in each tool schema is the actual API endpoint that Metis AI will call.
+        """
         django_api_base_url = getattr(settings, 'DJANGO_API_BASE_URL', "https://api.mobixtube.ir/api")
         if django_api_base_url == "https://api.mobixtube.ir/api":
             logger.warning(
@@ -176,6 +178,7 @@ class MetisAIService:
             return arg
 
         tools = []
+
         tools.append({
             "name": "create_goal",
             "description": "اهداف کاربر را ثبت یا ویرایش می کند. برای ثبت یک هدف جدید یا بروزرسانی هدف موجود استفاده می شود.",
@@ -185,8 +188,9 @@ class MetisAIService:
                 create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
                 create_arg("goal_type", "نوع هدف (مثلاً شخصی، حرفه‌ای، مالی، سلامتی).", "STRING", True),
                 create_arg("description", "توضیح کامل هدف کاربر (مثلاً یادگیری زبان جدید).", "STRING", True),
-                create_arg("priority", "اولویت هدف (از 1 تا 5، 5 بالاترین اولویت).", "INTEGER", False),
-                create_arg("deadline", "تاریخ مهلت دستیابی به هدف در قالب YYYY-MM-DD.", "STRING", False),
+                create_arg("priority", "اولویت هدف (از 1 تا 5، 5 بالاترین اولویت).", "NUMBER", False),
+                # INTEGER changed to NUMBER
+                create_arg("deadline", "تاریخ مهلت دستیابی به هدف در قالب Woche-MM-DD.", "STRING", False),
                 create_arg("progress", "درصد پیشرفت فعلی هدف (از 0.0 تا 100.0).", "NUMBER", False),
             ],
         })
@@ -202,7 +206,8 @@ class MetisAIService:
                 create_arg("allergies", "آلرژی‌های کاربر (مثل حساسیت به دارو یا غذا).", "STRING", False),
                 create_arg("diet_type", "نوع رژیم غذایی (مثلاً گیاه‌خواری، بدون گلوتن).", "STRING", False,
                            ["گیاه‌خواری", "وگان", "بدون گلوتن", "عادی"]),
-                create_arg("daily_calorie_intake", "میانگین کالری مصرفی روزانه.", "INTEGER", False),
+                create_arg("daily_calorie_intake", "میانگین کالری مصرفی روزانه.", "NUMBER", False),
+                # INTEGER changed to NUMBER
                 create_arg("physical_activity_level", "سطح فعالیت بدنی (کم، متوسط، زیاد).", "STRING", False,
                            ["کم", "متوسط", "زیاد"]),
                 create_arg("height", "قد کاربر به سانتی‌متر (مثلاً 175.5).", "NUMBER", False),
@@ -212,7 +217,7 @@ class MetisAIService:
                            False),
                 create_arg("sleep_hours", "میانگین ساعات خواب روزانه (مثلاً 7.5).", "NUMBER", False),
                 create_arg("medications", "داروهای در حال مصرف و دوز آن‌ها.", "STRING", False),
-                create_arg("last_checkup_date", "تاریخ آخرین معاینه پزشکی در قالب YYYY-MM-DD.", "STRING", False),
+                create_arg("last_checkup_date", "تاریخ آخرین معاینه پزشکی در قالب Woche-MM-DD.", "STRING", False),
             ]
         })
         tools.append({
@@ -247,7 +252,8 @@ class MetisAIService:
                 create_arg("skills", "مهارت‌های حرفه‌ای (مثلاً برنامه‌نویسی، مدیریت پروژه).", "STRING", False),
                 create_arg("job_title", "عنوان شغلی فعلی.", "STRING", False),
                 create_arg("industry", "صنعت کاری (مثلاً فناوری، آموزش).", "STRING", False),
-                create_arg("job_satisfaction", "سطح رضایت شغلی (از 1 تا 10).", "INTEGER", False),
+                create_arg("job_satisfaction", "سطح رضایت شغلی (از 1 تا 10).", "NUMBER", False),
+                # INTEGER changed to NUMBER
                 create_arg("career_goals", "اهداف حرفه‌ای (مثلاً ارتقا، تغییر شغل).", "STRING", False),
                 create_arg("work_hours", "میانگین ساعات کاری هفتگی (مثلاً 40.5).", "NUMBER", False),
                 create_arg("learning_style", "سبک یادگیری (بصری، شنیداری، عملی).", "STRING", False,
@@ -337,7 +343,7 @@ class MetisAIService:
                            ["خوشحال", "غمگین", "مضطرب", "عصبی", "آرام", "هیجان زده", "خسته", "خنثی"]),
                 create_arg("current_activity", "فعالیت فعلی (مثلاً کار، استراحت، ورزش).", "STRING", False),
                 create_arg("daily_schedule", "برنامه روزانه (مثل جلسات، وظایف).", "STRING", False),
-                create_arg("heart_rate", "ضربان قلب کاربر.", "INTEGER", False),
+                create_arg("heart_rate", "ضربان قلب کاربر.", "NUMBER", False),  # INTEGER changed to NUMBER
             ]
         })
         tools.append({
@@ -349,8 +355,10 @@ class MetisAIService:
                 create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
                 create_arg("feedback_text", "نظرات کاربر درباره عملکرد AI.", "STRING", False),
                 create_arg("interaction_type", "نوع تعامل (مثل سوال، توصیه، دستور).", "STRING", False),
-                create_arg("interaction_rating", "امتیاز کاربر به تعامل (از 1 تا 5).", "INTEGER", False),
-                create_arg("interaction_frequency", "تعداد تعاملات در بازه زمانی.", "INTEGER", False),
+                create_arg("interaction_rating", "امتیاز کاربر به تعامل (از 1 تا 5).", "NUMBER", False),
+                # INTEGER changed to NUMBER
+                create_arg("interaction_frequency", "تعداد تعاملات در بازه زمانی.", "NUMBER", False),
+                # INTEGER changed to NUMBER
             ]
         })
         tools.append({
@@ -362,7 +370,7 @@ class MetisAIService:
                 create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
                 create_arg("first_name", "نام کوچک کاربر.", "STRING", False),
                 create_arg("last_name", "نام خانوادگی کاربر.", "STRING", False),
-                create_arg("age", "سن کاربر.", "INTEGER", False),
+                create_arg("age", "سن کاربر.", "NUMBER", False),  # INTEGER changed to NUMBER
                 create_arg("gender", "جنسیت کاربر.", "STRING", False, ["مرد", "زن", "سایر"]),
                 create_arg("nationality", "ملیت کاربر.", "STRING", False),
                 create_arg("location", "محل زندگی کاربر (شهر یا کشور).", "STRING", False),
@@ -396,7 +404,8 @@ class MetisAIService:
             "method": "PATCH",
             "args": [
                 create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("pk", "شناسه یکتای رکورد تست روانشناسی برای به‌روزرسانی.", "INTEGER", True),
+                create_arg("pk", "شناسه یکتای رکورد تست روانشناسی برای به‌روزرسانی.", "NUMBER", True),
+                # INTEGER changed to NUMBER
                 create_arg("test_name", "نام تست.", "STRING", False),
                 create_arg("test_result_summary", "خلاصه نتایج تست.", "STRING", False),
                 create_arg("full_test_data", "داده‌های کامل تست به فرمت JSON (به صورت رشته JSON).", "STRING", False),
@@ -410,7 +419,8 @@ class MetisAIService:
             "method": "DELETE",
             "args": [
                 create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("pk", "شناسه یکتای رکورد تست روانشناسی برای حذف.", "INTEGER", True),
+                create_arg("pk", "شناسه یکتای رکورد تست روانشناسی برای حذف.", "NUMBER", True),
+                # INTEGER changed to NUMBER
             ]
         })
 
