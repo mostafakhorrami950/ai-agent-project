@@ -12,6 +12,7 @@ import logging
 import datetime
 from django.db import transaction
 from .permissions import IsMetisToolCallback  # مطمئن شوید این ایمپورت وجود دارد
+from django.conf import settings
 
 # Import your models
 from .models import (
@@ -735,6 +736,7 @@ class AIAgentChatView(APIView):
         return super().dispatch(request, *args, **kwargs)
 
     def _get_active_sessions_for_user(self, user):
+        # Mark expired sessions as inactive
         AiResponse.objects.filter(
             user=user,
             expires_at__lte=timezone.now(),
@@ -751,7 +753,7 @@ class AIAgentChatView(APIView):
         if user_profile.last_message_date != now:
             user_profile.messages_sent_today = 0
             user_profile.last_message_date = now
-            # Save handled by _increment_message_count
+            # Save will be handled by _increment_message_count or later saves of user_profile
 
         if user_profile.messages_sent_today >= user_profile.role.daily_message_limit:
             logger.warning(
@@ -761,24 +763,45 @@ class AIAgentChatView(APIView):
 
     def _increment_message_count(self, user_profile):
         now = timezone.localdate()
-        if user_profile.last_message_date != now:
+        if user_profile.last_message_date != now:  # Reset if it's a new day
             user_profile.messages_sent_today = 0
             user_profile.last_message_date = now
         user_profile.messages_sent_today += 1
         user_profile.save(update_fields=['messages_sent_today', 'last_message_date'])
 
+    def _get_user_info_for_metis_api(self, user_profile: UserProfile):
+        """
+        Generates a simplified user object suitable for Metis AI's 'user' field during session creation.
+        Metis AI expects a simple user object, typically with 'id' and 'name'.
+        """
+        user_obj = {
+            "id": str(user_profile.user.id)
+        }
+
+        user_name_parts = []
+        if user_profile.first_name:
+            user_name_parts.append(user_profile.first_name)
+        if user_profile.last_name:
+            user_name_parts.append(user_profile.last_name)
+
+        if user_name_parts:
+            user_obj["name"] = " ".join(user_name_parts)
+        elif user_profile.user.phone_number:
+            user_obj["name"] = user_profile.user.phone_number
+
+        logger.debug(
+            f"Simplified user_info for Metis API (session creation): {json.dumps(user_obj, ensure_ascii=False)}")
+        return user_obj
+
     def _get_user_context_for_ai(self, user_profile: UserProfile):
         """
         Aggregates various pieces of user information into a detailed system prompt.
         This prompt acts as a detailed initial context for the AI, complementing structured user_data.
-        (این تابع بدون تغییر باقی می‌ماند و اطلاعات کامل کاربر را برای ارسال در initialMessages آماده می‌کند)
         """
         context_parts = []
-
-        # Add basic profile info
         profile_info = [
-            # f"شناسه کاربر: {user_profile.user.id}", # شناسه کاربر در user_obj بالا ارسال می‌شود
-            f"شماره موبایل کاربر فعلی: {user_profile.user.phone_number}"  # برای آگاهی AI از شماره کاربر در حال چت
+            # f"شناسه کاربر: {user_profile.user.id}", # Already in user_obj for Metis
+            f"شماره موبایل کاربر فعلی: {user_profile.user.phone_number}"
         ]
         if user_profile.first_name: profile_info.append(f"نام: {user_profile.first_name}")
         if user_profile.last_name: profile_info.append(f"نام خانوادگی: {user_profile.last_name}")
@@ -787,81 +810,14 @@ class AIAgentChatView(APIView):
         if user_profile.nationality: profile_info.append(f"ملیت: {user_profile.nationality}")
         if user_profile.location: profile_info.append(f"مکان: {user_profile.location}")
         if user_profile.marital_status: profile_info.append(f"وضعیت تأهل: {user_profile.marital_status}")
+
+        # These are better as distinct context parts if they are long
         if user_profile.languages: context_parts.append(f"زبان‌ها: {user_profile.languages}")
         if user_profile.cultural_background: context_parts.append(f"پیشینه فرهنگی: {user_profile.cultural_background}")
 
         if profile_info:
-            context_parts.append("اطلاعات پایه و هویتی کاربر:")  # عنوان مناسب‌تر
-            context_parts.extend([f"- {item}" for item in profile_info])
+            context_parts.append("اطلاعات پایه و هویتی کاربر:\n" + "\n".join([f"- {item}" for item in profile_info]))
 
-        # افزودن داده‌ها از مدل‌های مرتبط (اگر وجود دارند و خالی نیستند)
-        try:
-            health_record = user_profile.user.health_record
-            health_details = []
-            if health_record.medical_history: health_details.append(
-                f"تاریخچه پزشکی: {health_record.medical_history}")  #
-            if health_record.chronic_conditions: health_details.append(
-                f"بیماری‌های مزمن: {health_record.chronic_conditions}")  #
-            if health_record.allergies: health_details.append(f"آلرژی‌ها: {health_record.allergies}")  #
-            if health_record.diet_type: health_details.append(f"رژیم غذایی: {health_record.diet_type}")  #
-            # ... سایر فیلدهای HealthRecord ...
-            if health_details:
-                context_parts.append("\nسوابق سلامتی:")
-                context_parts.extend([f"- {item}" for item in health_details])
-        except HealthRecord.DoesNotExist:  #
-            pass  # یا context_parts.append("\nسوابق سلامتی ثبت نشده است.")
-
-        try:
-            psych_profile = user_profile.user.psychological_profile  #
-            psych_details = []
-            if psych_profile.personality_type: psych_details.append(f"تیپ شخصیتی: {psych_profile.personality_type}")  #
-            if psych_profile.core_values: psych_details.append(f"ارزش‌های اصلی: {psych_profile.core_values}")  #
-            # ... سایر فیلدهای PsychologicalProfile ...
-            if psych_details:
-                context_parts.append("\nپروفایل روانشناختی:")
-                context_parts.extend([f"- {item}" for item in psych_details])
-        except PsychologicalProfile.DoesNotExist:  #
-            pass  # یا context_parts.append("\nپروفایل روانشناختی ثبت نشده است.")
-
-        # خلاصه سایر جداول به همین ترتیب (CareerEducation, FinancialInfo, و غیره)
-        # ...
-
-        if user_profile.user_information_summary:  #
-            context_parts.append(
-                f"\nخلاصه جامع کاربر (تولید شده توسط AI یا خلاصه‌نویسی شده):\n{user_profile.user_information_summary}")  #
-
-        full_context = "\n\n".join(context_parts)  # استفاده از دو newline برای خوانایی بهتر
-        logger.debug(
-            f"Generated AI context for user {user_profile.user.phone_number}: {full_context[:500]}...")
-        return full_context
-
-    def _get_user_context_for_ai(self, user_profile):
-        """
-        Aggregates various pieces of user information into a detailed system prompt.
-        This prompt acts as a detailed initial context for the AI, complementing structured user_data.
-        """
-        context_parts = []
-
-        # Add basic profile info
-        profile_info = [
-            f"شناسه کاربر: {user_profile.user.id}",
-            f"شماره موبایل: {user_profile.user.phone_number}"
-        ]
-        if user_profile.first_name: profile_info.append(f"نام: {user_profile.first_name}")
-        if user_profile.last_name: profile_info.append(f"نام خانوادگی: {user_profile.last_name}")
-        if user_profile.age is not None: profile_info.append(f"سن: {user_profile.age}")
-        if user_profile.gender: profile_info.append(f"جنسیت: {user_profile.gender}")
-        if user_profile.nationality: profile_info.append(f"ملیت: {user_profile.nationality}")
-        if user_profile.location: profile_info.append(f"مکان: {user_profile.location}")
-        if user_profile.marital_status: profile_info.append(f"وضعیت تأهل: {user_profile.marital_status}")
-        if user_profile.languages: context_parts.append(f"زبان‌ها: {user_profile.languages}")
-        if user_profile.cultural_background: context_parts.append(f"پیشینه فرهنگی: {user_profile.cultural_background}")
-
-        if profile_info:
-            context_parts.append("اطلاعات اولیه کاربر:")
-            context_parts.extend([f"- {item}" for item in profile_info])
-
-        # Add Health Records summary
         try:
             hr = user_profile.user.health_record
             health_details = []
@@ -869,19 +825,14 @@ class AIAgentChatView(APIView):
             if hr.chronic_conditions: health_details.append(f"بیماری‌های مزمن: {hr.chronic_conditions}")
             if hr.allergies: health_details.append(f"آلرژی‌ها: {hr.allergies}")
             if hr.diet_type: health_details.append(f"رژیم غذایی: {hr.diet_type}")
-            if hr.physical_activity_level: health_details.append(f"فعالیت بدنی: {hr.physical_activity_level}")
-            if hr.mental_health_status: health_details.append(f"سلامت روان: {hr.mental_health_status}")
-            if hr.medications: health_details.append(f"داروها: {hr.medications}")
-
+            if hr.physical_activity_level: health_details.append(f"سطح فعالیت بدنی: {hr.physical_activity_level}")
+            if hr.mental_health_status: health_details.append(f"وضعیت سلامت روان: {hr.mental_health_status}")
+            if hr.medications: health_details.append(f"داروهای مصرفی: {hr.medications}")
             if health_details:
-                context_parts.append("\nسوابق سلامتی:")
-                context_parts.extend([f"- {item}" for item in health_details])
-            else:
-                context_parts.append("\nسوابق سلامتی ثبت نشده است.")
+                context_parts.append("سوابق سلامتی:\n" + "\n".join([f"- {item}" for item in health_details]))
         except HealthRecord.DoesNotExist:
-            context_parts.append("\nسوابق سلامتی ثبت نشده است.")
+            context_parts.append("سوابق سلامتی ثبت نشده است.")
 
-        # Add Psychological Profile summary
         try:
             psych_profile = user_profile.user.psychological_profile
             psych_details = []
@@ -894,24 +845,19 @@ class AIAgentChatView(APIView):
             if psych_profile.emotional_triggers: psych_details.append(
                 f"محرک‌های احساسی: {psych_profile.emotional_triggers}")
             if psych_profile.preferred_communication: psych_details.append(
-                f"سبک ارتباطی: {psych_profile.preferred_communication}")
+                f"سبک ارتباطی ترجیحی: {psych_profile.preferred_communication}")
             if psych_profile.resilience_level: psych_details.append(f"سطح تاب‌آوری: {psych_profile.resilience_level}")
-
             if psych_details:
-                context_parts.append("\nپروفایل روانشناختی:")
-                context_parts.extend([f"- {item}" for item in psych_details])
-            else:
-                context_parts.append("\nپروفایل روانشناختی ثبت نشده است.")
+                context_parts.append("پروفایل روانشناختی:\n" + "\n".join([f"- {item}" for item in psych_details]))
         except PsychologicalProfile.DoesNotExist:
-            context_parts.append("\nپروفایل روانشناختی ثبت نشده است.")
+            context_parts.append("پروفایل روانشناختی ثبت نشده است.")
 
         if user_profile.user_information_summary:
             context_parts.append(
-                f"\nخلاصه جامع کاربر (توسط AI تولید شده است):\n{user_profile.user_information_summary}")
+                f"خلاصه جامع کاربر (تولید شده توسط AI یا خلاصه‌نویسی شده):\n{user_profile.user_information_summary}")
 
-        full_context = "\n".join(context_parts)
-        logger.debug(
-            f"Generated AI context for user {user_profile.user.phone_number}: {full_context[:500]}...")
+        full_context = "\n\n".join(filter(None, context_parts))  # Filter out empty strings if any part was empty
+        logger.debug(f"Generated AI context for user {user_profile.user.phone_number}: {full_context[:500]}...")
         return full_context
 
     def post(self, request, *args, **kwargs):
@@ -920,6 +866,7 @@ class AIAgentChatView(APIView):
         user_message_content = request.data.get('message')
         session_id_from_request = request.data.get('session_id')
         is_psych_test = request.data.get('is_psych_test', False)
+        personality_type = None  # Initialize
 
         if not user_message_content:
             return Response({'detail': 'محتوای پیام الزامی است.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -931,131 +878,162 @@ class AIAgentChatView(APIView):
         metis_service = MetisAIService()
         active_sessions = self._get_active_sessions_for_user(user)
         current_session_instance = None
-        metis_ai_response_content = 'خطا در دریافت پاسخ از AI.'
+        metis_ai_response_content = None
 
         try:
             with transaction.atomic():
-                # 1. مدیریت سشن (ایجاد یا ادامه)
+                # 1. Try to find an existing, active session
                 if session_id_from_request:
                     current_session_instance = active_sessions.filter(ai_session_id=session_id_from_request).first()
-                    if not current_session_instance:
-                        return Response({'detail': 'جلسه نامعتبر است یا منقضی شده است.'},
-                                        status=status.HTTP_404_NOT_FOUND)
+                    if current_session_instance:
+                        if current_session_instance.expires_at and current_session_instance.expires_at < timezone.now():
+                            current_session_instance.is_active = False
+                            current_session_instance.save(update_fields=['is_active'])
+                            logger.warning(
+                                f"Session {session_id_from_request} for user {user.phone_number} has expired.")
+                            # Allow creating a new session by falling through, or return error:
+                            # return Response({'detail': 'جلسه منقضی شده است. لطفا یک جلسه جدید شروع کنید.'}, status=status.HTTP_400_BAD_REQUEST)
+                            current_session_instance = None  # Treat as if no session was found to create a new one
+                        else:
+                            # Existing, valid session found. Send message to it.
+                            logger.info(
+                                f"Continuing existing Metis AI session {current_session_instance.metis_session_id} for user {user.phone_number}")
+                            metis_response_data = metis_service.send_message(
+                                session_id=current_session_instance.metis_session_id,
+                                content=user_message_content,
+                                message_type="USER"
+                            )
+                            metis_ai_response_content = metis_response_data.get('content',
+                                                                                'پاسخی از طرف دستیار دریافت نشد.')
+                            current_session_instance.add_to_chat_history("user", user_message_content)
+                            current_session_instance.add_to_chat_history("assistant", metis_ai_response_content)
+                    else:  # session_id provided but not found or invalid by ai_session_id
+                        return Response({'detail': 'جلسه نامعتبر است یا پیدا نشد.'}, status=status.HTTP_404_NOT_FOUND)
 
-                    if current_session_instance.expires_at and current_session_instance.expires_at < timezone.now():
-                        current_session_instance.is_active = False
-                        current_session_instance.save()
-                        logger.warning(f"Session {session_id_from_request} for user {user.phone_number} has expired.")
-                        return Response({'detail': 'جلسه منقضی شده است. لطفا یک جلسه جدید شروع کنید.'},
-                                        status=status.HTTP_400_BAD_REQUEST)
-
-                elif not current_session_instance:  # Start a new session if no session_id or found inactive
+                # 2. If no valid existing session instance is identified, create a new one
+                if not current_session_instance:
                     if not is_psych_test and user_profile.role and active_sessions.count() >= user_profile.role.max_active_sessions:
                         return Response({
                             'detail': f'شما به حداکثر تعداد جلسات فعال ({user_profile.role.max_active_sessions}) رسیده‌اید. لطفاً یک جلسه قبلی را حذف کنید.'
                         }, status=status.HTTP_400_BAD_REQUEST)
 
-                    # Prepare initial messages for Metis AI
                     initial_metis_messages = []
-                    # Changed from "SYSTEM" to "USER" as per Metis AI docs/examples for initialMessages type.
-                    initial_metis_messages.append(
-                        {"type": "USER", "content": self._get_user_context_for_ai(user_profile)})
+                    user_context_for_ai = self._get_user_context_for_ai(user_profile)
+                    if user_context_for_ai:  # Only add context if it's not empty
+                        initial_metis_messages.append({"type": "USER", "content": user_context_for_ai})
                     initial_metis_messages.append({"type": "USER", "content": user_message_content})
 
-                    # Get all tool schemas to pass to Metis AI when creating a session
-                    all_tools_schemas = metis_service.get_tool_schemas_for_metis_bot()
-
                     logger.info(f"Starting new Metis AI session for user {user.phone_number}")
+
+                    user_data_for_metis = self._get_user_info_for_metis_api(user_profile)
                     metis_response = metis_service.create_chat_session(
                         bot_id=metis_service.bot_id,
-                        user_data=self._get_user_info_for_metis_api(user_profile),  # این را در مرحله بعد اصلاح می‌کنیم
+                        user_data=user_data_for_metis,
                         initial_messages=initial_metis_messages
                     )
 
                     metis_session_id = metis_response.get('id')
-                    metis_ai_response_content = metis_response.get('content', 'No response from AI.')
+                    metis_ai_response_content = metis_response.get('content', 'پاسخی از طرف دستیار دریافت نشد.')
 
                     session_name = "Psychological Test" if is_psych_test else f"Chat Session {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
-                    duration_hours = user_profile.role.psych_test_duration_hours if is_psych_test else user_profile.role.session_duration_hours
+
+                    # Determine duration based on UserRole; ensure role exists
+                    duration_hours = 24  # Default duration
+                    if user_profile.role:
+                        duration_hours = user_profile.role.psych_test_duration_hours if is_psych_test else user_profile.role.session_duration_hours
+                    else:
+                        logger.warning(
+                            f"User {user_profile.user.phone_number} has no role, using default session duration.")
 
                     current_session_instance = AiResponse.objects.create(
                         user=user,
-                        ai_session_id=uuid.uuid4(),
+                        ai_session_id=str(uuid.uuid4()),  # Ensure ai_session_id is a string
                         metis_session_id=metis_session_id,
                         ai_response_name=session_name,
                         expires_at=timezone.now() + timezone.timedelta(hours=duration_hours)
                     )
+                    # Add initial exchange to chat history for new session
+                    if user_context_for_ai:
+                        current_session_instance.add_to_chat_history("system",
+                                                                     f"Initial context: {user_context_for_ai}")  # Or as USER type
                     current_session_instance.add_to_chat_history("user", user_message_content)
                     current_session_instance.add_to_chat_history("assistant", metis_ai_response_content)
-                    current_session_instance.save()
 
                     if is_psych_test:
                         PsychTestHistory.objects.create(
                             user=user,
-                            test_name="MBTI Psychological Test",
+                            test_name="MBTI Psychological Test",  # Or make dynamic
                             test_result_summary="تست در حال انجام است.",
-                            full_test_data=None,
+                            full_test_data=None,  # Will be filled later
                             ai_analysis="تحلیل تست پس از تکمیل انجام خواهد شد."
                         )
 
-                # 2. ادامه سشن موجود و ارسال پیام به Metis AI
-                logger.info(
-                    f"Sending message to Metis AI session {current_session_instance.metis_session_id} for user {user.phone_number}")
-
-                metis_response_data = metis_service.send_message(
-                    session_id=current_session_instance.metis_session_id,
-                    content=user_message_content,
-                    message_type="USER"
-                )
-                metis_ai_response_content = metis_response_data.get('content', 'No response from AI.')
-
-                current_session_instance.add_to_chat_history("user", user_message_content)
-                current_session_instance.add_to_chat_history("assistant", metis_ai_response_content)
-                current_session_instance.save()
-
-                personality_type = None
-                # Check for personality_type in Metis AI response, likely after a psych test completion
-                if is_psych_test and 'personality_type' in metis_ai_response_content:
+                # 3. Common post-processing for both new and continued sessions
+                # Check for personality_type in Metis AI response (especially if psych test)
+                # This check should apply to metis_ai_response_content whether from new session or continued
+                if is_psych_test and metis_ai_response_content:  # Ensure content is not None
                     try:
-                        parsed_content = json.loads(metis_ai_response_content)
-                        if 'personality_type' in parsed_content:
-                            personality_type = parsed_content['personality_type']
-                    except json.JSONDecodeError:
-                        pass
+                        # Metis might return a string that needs parsing, or structured data
+                        # Assuming metis_ai_response_content might be JSON string containing personality_type
+                        if isinstance(metis_ai_response_content, str):
+                            try:
+                                parsed_content = json.loads(metis_ai_response_content)
+                                if isinstance(parsed_content, dict) and 'personality_type' in parsed_content:
+                                    personality_type = parsed_content['personality_type']
+                            except json.JSONDecodeError:
+                                # If not JSON, perhaps it's a plain text and AI is expected to mention it in a specific format
+                                # This part may need refinement based on actual Metis responses for psych tests
+                                logger.debug(f"Psych test AI response is not direct JSON: {metis_ai_response_content}")
+                                pass
+                        elif isinstance(metis_ai_response_content,
+                                        dict) and 'personality_type' in metis_ai_response_content:
+                            personality_type = metis_ai_response_content['personality_type']
+
+
+                    except Exception as e_parse:  # Catch any error during parsing
+                        logger.error(f"Error parsing personality_type from AI response: {e_parse}")
 
                     if personality_type:
                         user_profile.ai_psychological_test = json.dumps({
-                            "responses": current_session_instance.get_chat_history(),
+                            "responses": current_session_instance.get_chat_history(),  # Full history up to this point
                             "personality_type": personality_type
                         }, ensure_ascii=False)
                         user_profile.save(update_fields=['ai_psychological_test'])
-                        current_session_instance.is_active = False
-                        current_session_instance.save()
 
+                        # Optionally deactivate session after psych test completion
+                        current_session_instance.is_active = False
+
+                        # Update PsychTestHistory record
                         psych_test_record = PsychTestHistory.objects.filter(user=user,
                                                                             test_name="MBTI Psychological Test").order_by(
                             '-test_date').first()
-                        if psych_test_record:
+                        if psych_test_record and psych_test_record.test_result_summary == "تست در حال انجام است.":
                             psych_test_record.test_result_summary = f"تیپ شخصیتی: {personality_type}"
                             psych_test_record.full_test_data = current_session_instance.get_chat_history()
-                            psych_test_record.ai_analysis = metis_ai_response_content
+                            psych_test_record.ai_analysis = metis_ai_response_content  # Store the raw AI response
                             psych_test_record.save()
 
-                # Update message count for user role limits
+                current_session_instance.save()  # Save any changes to AiResponse (like chat history, is_active)
                 self._increment_message_count(user_profile)
 
                 return Response({
                     'ai_response': metis_ai_response_content,
                     'session_id': str(current_session_instance.ai_session_id),
                     'chat_history': current_session_instance.get_chat_history(),
-                    'personality_type': personality_type
+                    'personality_type': personality_type  # Will be None if not found/applicable
                 }, status=status.HTTP_200_OK)
 
+        except ConnectionError as e_conn:  # More specific error handling for Metis
+            logger.error(f"Metis AI Connection Error in AIAgentChatView for user {user.phone_number}: {e_conn}",
+                         exc_info=True)
+            return Response({"error": "خطا در ارتباط با سرویس دستیار هوشمند. لطفاً کمی بعد دوباره تلاش کنید.",
+                             "details": str(e_conn) if settings.DEBUG else "Service connection error"},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
         except Exception as e:
             logger.error(f"Error in AIAgentChatView for user {user.phone_number}: {e}", exc_info=True)
-            return Response({"error": "An internal error occurred. Please try again later.", "details": str(e)},
+            return Response({"error": "یک خطای داخلی رخ داده است. لطفاً بعداً تلاش کنید.",
+                             "details": str(e) if settings.DEBUG else "Internal server error"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 # ----------------------------------------------------
 # General Views for AiChatSession and PsychTestHistory
