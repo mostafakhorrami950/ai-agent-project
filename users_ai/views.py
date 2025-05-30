@@ -1013,7 +1013,7 @@ class AIAgentChatView(APIView):
         user_profile.save(update_fields=['messages_sent_today', 'last_message_date'])
 
     def _get_user_info_for_metis_api(self, user_profile: UserProfile):
-        user_obj = {"id": str(user_profile.user.id)}
+        user_obj = {"user_id": user_profile.user_id}
         user_name_parts = []
         if user_profile.first_name: user_name_parts.append(user_profile.first_name)
         if user_profile.last_name: user_name_parts.append(user_profile.last_name)
