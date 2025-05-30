@@ -14,7 +14,7 @@ from django.db import transaction
 from .permissions import IsMetisToolCallback
 from django.conf import settings
 from datetime import timedelta
-from django.http import Http404
+from django.http import Http404  # اضافه کردن این import
 
 # Import your models
 from .models import (
@@ -966,9 +966,6 @@ class ToolDeletePsychTestRecordView(APIView):
                         status=status.HTTP_204_NO_CONTENT)
 
 
-# ----------------------------------------------------
-# AIAgentChatView (با منطق تست پویا و خلاصه‌سازی)
-# ----------------------------------------------------
 class AIAgentChatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     http_method_names = ['post']
@@ -981,16 +978,29 @@ class AIAgentChatView(APIView):
         AiResponse.objects.filter(user=user, expires_at__lte=timezone.now(), is_active=True).update(is_active=False)
         return AiResponse.objects.filter(user=user, is_active=True)
 
-    def _check_message_limit(self, user_profile: UserProfile):
+    def _check_message_limit(self, user_profile: UserProfile, is_profile_setup_flow: bool = False):
         if not user_profile.role:
             logger.warning(f"User {user_profile.user.phone_number} has no role assigned. Skipping message limit check.")
             return True
+        # برای جریان تنظیم پروفایل، محدودیت پیام را نادیده می‌گیریم یا محدودیت دیگری اعمال می‌کنیم
+        if is_profile_setup_flow:
+            return True  # یا یک محدودیت جداگانه برای پیام‌های تست پویا
+
         now = timezone.localdate()
         if user_profile.last_message_date != now:
             user_profile.messages_sent_today = 0
-        return user_profile.messages_sent_today < user_profile.role.daily_message_limit
+            # user_profile.last_message_date = now # این در _increment_message_count انجام می‌شود
 
-    def _increment_message_count(self, user_profile: UserProfile):
+        if user_profile.messages_sent_today >= user_profile.role.daily_message_limit:
+            logger.warning(
+                f"User {user_profile.user.phone_number} reached daily message limit ({user_profile.role.daily_message_limit}).")
+            return False
+        return True
+
+    def _increment_message_count(self, user_profile: UserProfile, is_profile_setup_flow: bool = False):
+        if is_profile_setup_flow:  # برای پیام‌های حین تست پویا، شمارنده کلی را افزایش نمی‌دهیم
+            return
+
         now = timezone.localdate()
         if user_profile.last_message_date != now:
             user_profile.messages_sent_today = 0
@@ -1001,8 +1011,9 @@ class AIAgentChatView(APIView):
     def _get_user_info_for_metis_api(self, user_profile: UserProfile):
         user_obj = {"id": str(user_profile.user.id)}
         user_name_parts = []
-        if user_profile.first_name: user_name_parts.append(user_profile.first_name)
-        if user_profile.last_name: user_name_parts.append(user_profile.last_name)
+        # از فیلدهای first_name و last_name روی خود آبجکت user استفاده می‌کنیم
+        if user_profile.user.first_name: user_name_parts.append(user_profile.user.first_name)
+        if user_profile.user.last_name: user_name_parts.append(user_profile.user.last_name)
         if user_name_parts:
             user_obj["name"] = " ".join(user_name_parts)
         elif user_profile.user.phone_number:
@@ -1021,8 +1032,10 @@ class AIAgentChatView(APIView):
                 f"خلاصه اطلاعات کاربر (برای استفاده در پاسخ‌ها):\n{user_profile.user_information_summary}")
         else:
             profile_info_items = [f"شماره موبایل کاربر فعلی: {user_profile.user.phone_number}"]
-            if user_profile.first_name: profile_info_items.append(f"نام: {user_profile.first_name}")
-            if user_profile.last_name: profile_info_items.append(f"نام خانوادگی: {user_profile.last_name}")
+            if user_profile.user.first_name: profile_info_items.append(
+                f"نام: {user_profile.user.first_name}")  # اصلاح شده
+            if user_profile.user.last_name: profile_info_items.append(
+                f"نام خانوادگی: {user_profile.user.last_name}")  # اصلاح شده
             if user_profile.age is not None: profile_info_items.append(f"سن: {user_profile.age}")
             if profile_info_items: context_parts.append(
                 "اطلاعات پایه و هویتی کاربر:\n" + "\n".join([f"- {item}" for item in profile_info_items]))
@@ -1040,18 +1053,18 @@ class AIAgentChatView(APIView):
         user_message_content = request.data.get('message', "").strip()
         session_id_from_request = request.data.get('session_id')
 
-        ai_final_response_content = "خطایی در پردازش رخ داد، لطفا مجددا تلاش کنید."
-        # final_session_id_to_return = session_id_from_request # این مقدار ممکن است None باشد یا تغییر کند
-        final_session_id_to_return = None
-        final_chat_history = []
-        http_status_code = status.HTTP_500_INTERNAL_SERVER_ERROR  # پیش‌فرض خطا
-
-        if not user_message_content:
-            return Response({'detail': 'محتوای پیام الزامی است.'}, status=status.HTTP_400_BAD_REQUEST)
-
         metis_service = MetisAIService()
         active_sessions = self._get_active_sessions_for_user(user)
         current_session_instance = None
+
+        # Default response values
+        ai_final_response_content = "خطایی در پردازش رخ داد، لطفا مجددا تلاش کنید."
+        final_session_id_to_return = session_id_from_request
+        final_chat_history = []
+        http_status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+
+        if not user_message_content:
+            return Response({'detail': 'محتوای پیام الزامی است.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             with transaction.atomic():
@@ -1071,7 +1084,7 @@ class AIAgentChatView(APIView):
                                             'detail': 'جلسه نامعتبر است یا منقضی شده. لطفا بدون session_id برای ایجاد جلسه جدید تلاش کنید یا یک session_id معتبر ارسال کنید.'},
                                         status=status.HTTP_400_BAD_REQUEST)
 
-                # مدیریت شروع "تست پویا"
+                # ---- Profile Setup Flow ----
                 if user_message_content.lower() == CMD_START_SETUP.lower() and not user_profile.is_in_profile_setup:
                     can_start_setup = True
                     if user_profile.role and user_profile.last_form_submission_time:
@@ -1083,6 +1096,7 @@ class AIAgentChatView(APIView):
                             minutes_rem = int((time_remaining.total_seconds() % 3600) / 60)
                             ai_final_response_content = f"شما فقط هر {user_profile.role.form_submission_interval_hours} ساعت یکبار می‌توانید اطلاعات پروفایل را تکمیل یا اصلاح کنید. لطفاً پس از حدود {hours_rem} ساعت و {minutes_rem} دقیقه دیگر تلاش کنید."
                             http_status_code = status.HTTP_429_TOO_MANY_REQUESTS
+                            # Return current session info if exists, otherwise no session
                             final_session_id_to_return = str(
                                 current_session_instance.ai_session_id) if current_session_instance else None
                             final_chat_history = current_session_instance.get_chat_history() if current_session_instance else []
@@ -1097,7 +1111,8 @@ class AIAgentChatView(APIView):
                         current_session_instance = None
 
                         initial_messages_for_setup = [
-                            {"type": "SYSTEM", "content": PROFILE_SETUP_SYSTEM_PROMPT},
+                            {"type": "SYSTEM",
+                             "content": self._get_user_context_for_ai(user_profile, for_setup_prompt=True)},
                             {"type": "USER", "content": "سلام، لطفا برای تکمیل پروفایلم از من سوال بپرسید."}
                         ]
                         metis_response = metis_service.create_chat_session(
@@ -1123,47 +1138,37 @@ class AIAgentChatView(APIView):
                             expires_at=timezone.now() + timedelta(
                                 hours=user_profile.role.session_duration_hours if user_profile.role else 24)
                         )
-                        current_session_instance.add_to_chat_history("system", PROFILE_SETUP_SYSTEM_PROMPT)
+                        current_session_instance.add_to_chat_history("system",
+                                                                     self._get_user_context_for_ai(user_profile,
+                                                                                                   for_setup_prompt=True))
                         current_session_instance.add_to_chat_history("user", CMD_START_SETUP)
                         current_session_instance.add_to_chat_history("assistant", ai_final_response_content)
-                        # Fall through to common save and response logic
+                        # No _increment_message_count here, as it's a special flow trigger
 
-                # اگر کاربر در حال تنظیم پروفایل است و دستوری برای اتمام/لغو نداده
-                elif user_profile.is_in_profile_setup and user_message_content.lower() not in [CMD_FINISH_SETUP.lower(),
-                                                                                               CMD_CANCEL_SETUP.lower()]:
+                elif user_profile.is_in_profile_setup:  # User is already in setup mode
                     if not current_session_instance:
-                        logger.error(f"User {user.phone_number} in profile setup but no active session for continuing.")
+                        logger.error(f"User {user.phone_number} in profile setup but no active session.")
                         return Response(
                             {"detail": "جلسه تنظیم پروفایل شما یافت نشد. لطفاً با 'تکمیل پروفایل' دوباره شروع کنید."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-                    logger.info(
-                        f"Continuing profile setup for user {user.phone_number}. Message: {user_message_content}")
-                    metis_response_data = metis_service.send_message(
-                        session_id=current_session_instance.metis_session_id,
-                        content=user_message_content, message_type="USER")
-                    ai_final_response_content = metis_response_data.get('content', 'پاسخی از طرف دستیار دریافت نشد.')
-                    current_session_instance.add_to_chat_history("user", user_message_content)
-                    current_session_instance.add_to_chat_history("assistant", ai_final_response_content)
+                    final_session_id_to_return = str(
+                        current_session_instance.ai_session_id)  # Set session id for response
 
-                # مدیریت اتمام یا لغو "تست پویا"
-                elif user_profile.is_in_profile_setup and user_message_content.lower() == CMD_FINISH_SETUP.lower():
-                    if not current_session_instance:
-                        return Response({"detail": "جلسه‌ای برای اتمام تست یافت نشد."},
-                                        status=status.HTTP_400_BAD_REQUEST)
-                    logger.info(f"User {user.phone_number} requested to finish profile setup.")
-                    current_session_instance.add_to_chat_history("user", user_message_content)
+                    if user_message_content.lower() == CMD_FINISH_SETUP.lower():
+                        logger.info(f"User {user.phone_number} requested to finish profile setup.")
+                        current_session_instance.add_to_chat_history("user", user_message_content)
 
-                    setup_chat_history = current_session_instance.get_chat_history()
-                    history_text_for_prompt = "\n".join(
-                        [f"کاربر: {msg['content']}" if msg['role'] == 'user' else f"دستیار: {msg['content']}" for msg in
-                         setup_chat_history if msg['role'] != 'system'])
-                    full_prompt_for_summarization = PROFILE_SUMMARIZATION_PROMPT_PREFIX + history_text_for_prompt + PROFILE_SUMMARIZATION_PROMPT_SUFFIX
+                        setup_chat_history = current_session_instance.get_chat_history()
+                        history_text_for_prompt = "\n".join(
+                            [f"{msg['role']}: {msg['content']}" for msg in setup_chat_history if
+                             msg['role'] != 'system'])
+                        full_prompt_for_summarization = PROFILE_SUMMARIZATION_PROMPT_PREFIX + history_text_for_prompt + PROFILE_SUMMARIZATION_PROMPT_SUFFIX
 
-                    logger.info(f"Sending compiled setup chat to Metis for summarization for user {user.phone_number}.")
-                    try:
+                        logger.info(
+                            f"Sending compiled setup chat to Metis for summarization for user {user.phone_number}.")
                         summary_response = metis_service.send_message(
-                            session_id=current_session_instance.metis_session_id,  # Use existing session for summary
+                            session_id=current_session_instance.metis_session_id,
                             content=full_prompt_for_summarization, message_type="USER"
                         )
                         summary_text = summary_response.get('content')
@@ -1171,36 +1176,47 @@ class AIAgentChatView(APIView):
                             user_profile.user_information_summary = summary_text
                             ai_final_response_content = f"اطلاعات پروفایل شما با موفقیت دریافت و خلاصه‌سازی شد."
                             current_session_instance.add_to_chat_history("assistant",
-                                                                         ai_final_response_content + f"\nخلاصه دریافت شده:\n{summary_text}")
+                                                                         ai_final_response_content + f"\nخلاصه: {summary_text}")
                             logger.info(f"Profile summary generated for user {user.phone_number}.")
                         else:
                             ai_final_response_content = "متاسفانه در حال حاضر امکان خلاصه‌سازی اطلاعات شما وجود ندارد. اما اطلاعات شما در طول چت ذخیره شده است."
                             current_session_instance.add_to_chat_history("assistant", ai_final_response_content)
                             logger.error(
                                 f"Metis failed to generate summary for user {user.phone_number}. Response: {summary_response}")
-                    except Exception as e_summary:
-                        logger.error(f"Error calling Metis for summarization for user {user.phone_number}: {e_summary}",
-                                     exc_info=True)
-                        ai_final_response_content = "خطا در ارتباط با سرویس خلاصه‌ساز. اطلاعات شما در طول چت ذخیره شد اما خلاصه‌سازی انجام نشد."
-                        current_session_instance.add_to_chat_history("assistant", ai_final_response_content)
+                        user_profile.is_in_profile_setup = False
+                        user_profile.last_form_submission_time = timezone.now()
+                        user_profile.save(update_fields=['is_in_profile_setup', 'last_form_submission_time',
+                                                         'user_information_summary'])
+                        current_session_instance.is_active = False
+                        http_status_code = status.HTTP_200_OK
 
-                    user_profile.is_in_profile_setup = False
-                    user_profile.last_form_submission_time = timezone.now()
-                    user_profile.save(
-                        update_fields=['is_in_profile_setup', 'last_form_submission_time', 'user_information_summary'])
-                    current_session_instance.is_active = False
-                    # No increment message count here as it's end of special flow
-
-                elif user_profile.is_in_profile_setup and user_message_content.lower() == CMD_CANCEL_SETUP.lower():
-                    logger.info(f"User {user.phone_number} cancelled profile setup.")
-                    user_profile.is_in_profile_setup = False
-                    user_profile.save(update_fields=['is_in_profile_setup'])
-                    ai_final_response_content = "تکمیل پروفایل لغو شد. شما می‌توانید هر زمان خواستید با ارسال 'تکمیل پروفایل' این فرآیند را مجددا شروع کنید."
-                    if current_session_instance:
+                    elif user_message_content.lower() == CMD_CANCEL_SETUP.lower():
+                        logger.info(f"User {user.phone_number} cancelled profile setup.")
+                        user_profile.is_in_profile_setup = False
+                        user_profile.save(update_fields=['is_in_profile_setup'])
+                        ai_final_response_content = "تکمیل پروفایل لغو شد. شما می‌توانید هر زمان خواستید با ارسال 'تکمیل پروفایل' این فرآیند را مجددا شروع کنید."
                         current_session_instance.add_to_chat_history("user", user_message_content)
                         current_session_instance.add_to_chat_history("assistant", ai_final_response_content)
                         current_session_instance.is_active = False
-                    # No increment message count here
+                        http_status_code = status.HTTP_200_OK
+
+                    else:  # ادامه مکالمه در مد تنظیم پروفایل (Metis سوالات را می‌پرسد)
+                        if not self._check_message_limit(user_profile,
+                                                         is_profile_setup_flow=True):  # Check specific limit if any
+                            return Response({'detail': 'محدودیت پیام در طول تنظیم پروفایل به پایان رسیده است.'},
+                                            status=status.HTTP_429_TOO_MANY_REQUESTS)
+                        logger.info(
+                            f"Continuing profile setup for user {user.phone_number}. Message: {user_message_content}")
+                        metis_response_data = metis_service.send_message(
+                            session_id=current_session_instance.metis_session_id,
+                            content=user_message_content, message_type="USER")
+                        ai_final_response_content = metis_response_data.get('content',
+                                                                            'پاسخی از طرف دستیار دریافت نشد.')
+                        current_session_instance.add_to_chat_history("user", user_message_content)
+                        current_session_instance.add_to_chat_history("assistant", ai_final_response_content)
+                        http_status_code = status.HTTP_200_OK
+                        self._increment_message_count(user_profile,
+                                                      is_profile_setup_flow=True)  # Count setup messages differently if needed
 
                 # چت عادی (کاربر در مد تنظیم پروفایل نیست و دستور خاصی هم نداده)
                 else:
@@ -1235,13 +1251,12 @@ class AIAgentChatView(APIView):
                             expires_at=timezone.now() + timedelta(
                                 hours=user_profile.role.session_duration_hours if user_profile.role else 24)
                         )
-                        current_session_instance.add_to_chat_history("system",
-                                                                     self._get_user_context_for_ai(user_profile,
-                                                                                                   for_setup_prompt=False))
+                        # Note: Storing potentially large system context in every chat history entry can be verbose.
+                        # current_session_instance.add_to_chat_history("system", self._get_user_context_for_ai(user_profile, for_setup_prompt=False))
                         current_session_instance.add_to_chat_history("user", user_message_content)
                         current_session_instance.add_to_chat_history("assistant", ai_final_response_content)
-                    # If current_session_instance already existed and was not a setup command, it means it was handled at the beginning.
-                    # The metis_ai_response_content would already be populated.
+                    # If current_session_instance already existed and was valid, it was handled at the top, and metis_ai_response_content is already set.
+                    http_status_code = status.HTTP_200_OK
 
                 # ذخیره نهایی و افزایش شمارنده پیام
                 if current_session_instance:
@@ -1250,15 +1265,17 @@ class AIAgentChatView(APIView):
                     if not (user_profile.is_in_profile_setup and user_message_content.lower() in [
                         CMD_FINISH_SETUP.lower(), CMD_CANCEL_SETUP.lower()]) and \
                             not (
-                                    user_message_content.lower() == CMD_START_SETUP.lower()):  # اگر شروع تست بود، بالا شمرده شد
+                                    user_message_content.lower() == CMD_START_SETUP.lower() and ai_final_response_content != f"شما فقط هر {user_profile.role.form_submission_interval_hours if user_profile.role else 24} ساعت یکبار می‌توانید اطلاعات پروفایل را تکمیل یا اصلاح کنید. لطفاً پس از حدود {int(((user_profile.last_form_submission_time + timedelta(hours=user_profile.role.form_submission_interval_hours if user_profile.role else 24)) - timezone.now()).total_seconds() / 3600)} ساعت و {int((((user_profile.last_form_submission_time + timedelta(hours=user_profile.role.form_submission_interval_hours if user_profile.role else 24)) - timezone.now()).total_seconds() % 3600) / 60)} دقیقه دیگر تلاش کنید."):
                         self._increment_message_count(user_profile)
 
                     final_session_id_to_return = str(current_session_instance.ai_session_id)
                     final_chat_history = current_session_instance.get_chat_history()
-                    http_status_code = status.HTTP_200_OK  # Default to OK if processing reached here
-                else:  # Should not happen if logic is correct, but as a fallback
-                    ai_final_response_content = "جلسه‌ای برای پردازش درخواست شما یافت نشد."
-                    http_status_code = status.HTTP_400_BAD_REQUEST
+                else:  # Fallback if somehow no session instance was set (should be rare)
+                    if not final_session_id_to_return and session_id_from_request:  # If original session_id was provided but became invalid
+                        final_session_id_to_return = session_id_from_request  # Return original requested session_id
+                    # If no session was ever found or created, final_session_id_to_return will be None
+                    ai_final_response_content = "خطایی در مدیریت جلسه رخ داد."
+                    http_status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
 
                 return Response({
                     'ai_response': ai_final_response_content,
@@ -1302,24 +1319,24 @@ class AiChatSessionDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = AiResponse.objects.all()
     serializer_class = AiResponseSerializer
     permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'pk'  # Assuming you want to lookup by AiResponse PK for direct access, or ai_session_id (UUID)
 
-    def get_queryset(self):
-        return self.queryset.filter(user=self.request.user)  # pk type will be determined by model's PK field
-
-    def get_object(self):  # Override to lookup by ai_session_id if it's UUID string
-        queryset = self.get_queryset()
+    def get_object(self):
+        # Allow lookup by either PK or ai_session_id (UUID string)
+        queryset = self.filter_queryset(self.get_queryset())
         pk = self.kwargs.get(self.lookup_field)
-        try:
-            # Try to convert pk to UUID if your ai_session_id is UUID
-            uuid_pk = uuid.UUID(pk)
-            return get_object_or_404(queryset, ai_session_id=str(uuid_pk))
-        except ValueError:
-            # Fallback to integer PK if not a valid UUID (or handle error)
-            try:
-                int_pk = int(pk)
-                return get_object_or_404(queryset, pk=int_pk)
-            except ValueError:
-                raise Http404("Session not found with the provided ID format.")
+
+        if pk is not None:
+            try:  # Try UUID first if your pk might be ai_session_id
+                uuid_pk = uuid.UUID(str(pk))  # Ensure pk is string for UUID conversion
+                return get_object_or_404(queryset, ai_session_id=str(uuid_pk))
+            except ValueError:  # If not a valid UUID, assume it's an integer PK
+                try:
+                    int_pk = int(pk)
+                    return get_object_or_404(queryset, pk=int_pk)
+                except (ValueError, TypeError):
+                    raise Http404("Session not found with the provided ID format.")
+        raise Http404("Session ID not provided in URL.")
 
     def perform_destroy(self, instance):
         metis_service = MetisAIService()
