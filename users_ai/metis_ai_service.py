@@ -120,10 +120,12 @@ class MetisAIService:
             "user": user_data if user_data is not None else {},
             "initialMessages": initial_messages if initial_messages is not None else []
         }
-        if functions is not None:
-            data["functions"] = functions
-        else:
-            data["functions"] = []
+        # خطوط زیر که مربوط به اضافه کردن "functions" بودند را کامنت یا حذف کنید:
+        # if functions is not None:
+        #     data["functions"] = functions
+        # else:
+        #     data["functions"] = [] # این خط باعث ارسال "functions": [] می‌شود
+
 
         logger.debug(f"[create_chat_session] Data: {json.dumps(data, indent=2, ensure_ascii=False)}")
         return self._make_request("POST", "chat", endpoint, json_data=data)
