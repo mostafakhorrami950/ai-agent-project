@@ -1,3 +1,5 @@
+# users_ai/urls.py
+
 from django.urls import path
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -45,7 +47,6 @@ urlpatterns = [
     path('ai-sessions/', AiChatSessionListCreate.as_view(), name='ai-sessions'),
     path('ai-sessions/<int:pk>/', AiChatSessionDetail.as_view(), name='ai-session-detail'),
     path('test-tool-status-minimal/', TestTimeView.as_view(), name='test-tool-status-minimal'),
-    # برای تست در دسترس بودن API
 
     # ----------------------------------------------------
     # Metis AI Tool Callback Endpoints (Protected by IsMetisToolCallback)
@@ -65,18 +66,16 @@ urlpatterns = [
     path('tools/feedback/update/', ToolUpdateFeedbackLearningView.as_view(), name='tool-update-feedback'),
 
     path('tools/goals/create/', ToolCreateGoalView.as_view(), name='tool-create-goal'),
-    path('tools/goals/update/<int:pk>/', ToolUpdateGoalView.as_view(), name='tool-update-goal'),
-    # pk در URL از Metis میاد
-    path('tools/goals/delete/<int:pk>/', ToolDeleteGoalView.as_view(), name='tool-delete-goal'),
-    # pk در URL از Metis میاد
+    path('tools/goals/update/', ToolUpdateGoalView.as_view(), name='tool-update-goal'),  # <int:pk>/ حذف شد
+    path('tools/goals/delete/', ToolDeleteGoalView.as_view(), name='tool-delete-goal'),  # <int:pk>/ حذف شد
 
     path('tools/habits/create/', ToolCreateHabitView.as_view(), name='tool-create-habit'),
-    path('tools/habits/update/<int:pk>/', ToolUpdateHabitView.as_view(), name='tool-update-habit'),
-    path('tools/habits/delete/<int:pk>/', ToolDeleteHabitView.as_view(), name='tool-delete-habit'),
+    path('tools/habits/update/', ToolUpdateHabitView.as_view(), name='tool-update-habit'),  # <int:pk>/ حذف شد
+    path('tools/habits/delete/', ToolDeleteHabitView.as_view(), name='tool-delete-habit'),
 
     path('tools/psych-test-history/create/', ToolCreatePsychTestRecordView.as_view(), name='tool-create-psych-test'),
-    path('tools/psych-test-history/update/<int:pk>/', ToolUpdatePsychTestRecordView.as_view(),
-         name='tool-update-psych-test'),
-    path('tools/psych-test-history/delete/<int:pk>/', ToolDeletePsychTestRecordView.as_view(),
-         name='tool-delete-psych-test'),
+    path('tools/psych-test-history/update/', ToolUpdatePsychTestRecordView.as_view(), name='tool-update-psych-test'),
+    # <int:pk>/ حذف شد
+    path('tools/psych-test-history/delete/', ToolDeletePsychTestRecordView.as_view(), name='tool-delete-psych-test'),
+    # <int:pk>/ حذف شد
 ]

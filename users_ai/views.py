@@ -516,11 +516,14 @@ class ToolUpdateGoalView(APIView):
     permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
-    def patch(self, request, pk, *args, **kwargs):  # pk is passed in URL
+    def patch(self, request, *args, **kwargs):  # pk را از URL حذف کردیم
         user_id = request.data.get('user_id')
-        if not user_id:
-            logger.error("Tool call for update_goal received without user_id.")
-            return Response({"error": "User ID is required for tool calls."}, status=status.HTTP_400_BAD_REQUEST)
+        pk = request.data.get('pk')  # pk را از body درخواست می‌گیریم
+        if not user_id or not pk:
+            logger.error("Tool call for update_goal received without user_id or pk.")
+            return Response({"error": "User ID and PK are required for tool calls."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
@@ -544,11 +547,12 @@ class ToolDeleteGoalView(APIView):
     permission_classes = [IsMetisToolCallback]
     http_method_names = ['delete']
 
-    def delete(self, request, pk, *args, **kwargs):
+    def delete(self, request, *args, **kwargs): # pk را از URL حذف کردیم
         user_id = request.data.get('user_id')
-        if not user_id:
-            logger.error("Tool call for delete_goal received without user_id.")
-            return Response({"error": "User ID is required for tool calls."}, status=status.HTTP_400_BAD_REQUEST)
+        pk = request.data.get('pk') # pk را از body درخواست می‌گیریم
+        if not user_id or not pk:
+            logger.error("Tool call for delete_goal received without user_id or pk.")
+            return Response({"error": "User ID and PK are required for tool calls."}, status=status.HTTP_400_BAD_REQUEST)
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
@@ -558,8 +562,7 @@ class ToolDeleteGoalView(APIView):
         goal = get_object_or_404(Goal, pk=pk, user=user)
         goal.delete()
         logger.info(f"Tool: Goal {pk} deleted for user {user.phone_number}.")
-        return Response({"status": "success", "message": f"هدف {pk} کاربر {user.phone_number} با موفقیت حذف شد."},
-                        status=status.HTTP_204_NO_CONTENT)
+        return Response({"status": "success", "message": f"هدف {pk} کاربر {user.phone_number} با موفقیت حذف شد."}, status=status.HTTP_204_NO_CONTENT)
 
 
 class ToolCreateHabitView(APIView):
@@ -674,11 +677,12 @@ class ToolUpdatePsychTestRecordView(APIView):
     permission_classes = [IsMetisToolCallback]
     http_method_names = ['patch']
 
-    def patch(self, request, pk, *args, **kwargs):
+    def patch(self, request, *args, **kwargs): # pk را از URL حذف کردیم
         user_id = request.data.get('user_id')
-        if not user_id:
-            logger.error("Tool call for update_psych_test_record received without user_id.")
-            return Response({"error": "User ID is required for tool calls."}, status=status.HTTP_400_BAD_REQUEST)
+        pk = request.data.get('pk') # pk را از body درخواست می‌گیریم
+        if not user_id or not pk:
+            logger.error("Tool call for update_psych_test_record received without user_id or pk.")
+            return Response({"error": "User ID and PK are required for tool calls."}, status=status.HTTP_400_BAD_REQUEST)
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
@@ -686,31 +690,26 @@ class ToolUpdatePsychTestRecordView(APIView):
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
         psych_test_record = get_object_or_404(PsychTestHistory, pk=pk, user=user)
-        serializer = PsychTestHistorySerializer(psych_test_record, data=request.data, partial=True,
-                                                context={'request': request})
+        serializer = PsychTestHistorySerializer(psych_test_record, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             logger.info(f"Tool: PsychTestHistory record {pk} updated for user {user.phone_number}.")
-            return Response({"status": "success",
-                             "message": f"رکورد تست روانشناسی {pk} کاربر {user.phone_number} با موفقیت به‌روز شد.",
-                             "data": serializer.data}, status=status.HTTP_200_OK)
+            return Response({"status": "success", "message": f"رکورد تست روانشناسی {pk} کاربر {user.phone_number} با موفقیت به‌روز شد.", "data": serializer.data}, status=status.HTTP_200_OK)
         else:
-            logger.error(
-                f"Tool: Error updating PsychTestHistory record {pk} for {user.phone_number}: {serializer.errors}")
-            return Response(
-                {"status": "error", "message": "خطا در به‌روزرسانی رکورد تست روانشناسی.", "errors": serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Tool: Error updating PsychTestHistory record {pk} for {user.phone_number}: {serializer.errors}")
+            return Response({"status": "error", "message": "خطا در به‌روزرسانی رکورد تست روانشناسی.", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ToolDeletePsychTestRecordView(APIView):
     permission_classes = [IsMetisToolCallback]
     http_method_names = ['delete']
 
-    def delete(self, request, pk, *args, **kwargs):
+    def delete(self, request, *args, **kwargs): # pk را از URL حذف کردیم
         user_id = request.data.get('user_id')
-        if not user_id:
-            logger.error("Tool call for delete_psych_test_record received without user_id.")
-            return Response({"error": "User ID is required for tool calls."}, status=status.HTTP_400_BAD_REQUEST)
+        pk = request.data.get('pk') # pk را از body درخواست می‌گیریم
+        if not user_id or not pk:
+            logger.error("Tool call for delete_psych_test_record received without user_id or pk.")
+            return Response({"error": "User ID and PK are required for tool calls."}, status=status.HTTP_400_BAD_REQUEST)
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
@@ -720,9 +719,7 @@ class ToolDeletePsychTestRecordView(APIView):
         psych_test_record = get_object_or_404(PsychTestHistory, pk=pk, user=user)
         psych_test_record.delete()
         logger.info(f"Tool: PsychTestHistory record {pk} deleted for user {user.phone_number}.")
-        return Response(
-            {"status": "success", "message": f"رکورد تست روانشناسی {pk} کاربر {user.phone_number} با موفقیت حذف شد."},
-            status=status.HTTP_204_NO_CONTENT)
+        return Response({"status": "success", "message": f"رکورد تست روانشناسی {pk} کاربر {user.phone_number} با موفقیت حذف شد."}, status=status.HTTP_204_NO_CONTENT)
 
 
 # ----------------------------------------------------
