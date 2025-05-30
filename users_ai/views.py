@@ -216,33 +216,71 @@ class ToolUpdateUserProfileDetailsView(APIView):
 
 
 class ToolUpdateHealthRecordView(APIView):
-    permission_classes = [IsMetisToolCallback]
+    permission_classes = [IsMetisToolCallback]  # پرمیژن برای بررسی توکن از متیس
     http_method_names = ['patch']
 
     def patch(self, request, *args, **kwargs):
+        # لاگ کردن داده‌های دریافتی برای دیباگ
+        logger.info(f"ToolUpdateHealthRecordView - Request Query Params: {request.query_params}")
+        logger.info(f"ToolUpdateHealthRecordView - Request Data Received: {request.data}")
+
         user_id = request.data.get('user_id')
         if not user_id:
-            logger.error("Tool call for update_health_record received without user_id.")
-            return Response({"error": "User ID is required for tool calls."}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error("ToolUpdateHealthRecordView: 'user_id' not found in request data.")
+            return Response({"error": "User ID ('user_id') is required in the request data for tool calls."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user_id = int(user_id)
+        except ValueError:
+            logger.error(f"ToolUpdateHealthRecordView: Invalid 'user_id' format: {user_id}. Must be an integer.")
+            return Response({"error": f"Invalid User ID format: '{user_id}'. Must be an integer."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            logger.error(f"User with ID {user_id} not found for tool call.")
+            logger.error(f"ToolUpdateHealthRecordView: User with ID {user_id} not found.")
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        record, created = HealthRecord.objects.get_or_create(user=user)
-        serializer = HealthRecordSerializer(record, data=request.data, partial=True, context={'request': request})
-        if serializer.is_valid():
-            serializer.save()
-            logger.info(f"Tool: HealthRecord {'created' if created else 'updated'} for user {user.phone_number}.")
-            return Response({"status": "success",
-                             "message": f"اطلاعات سلامتی کاربر {user.phone_number} {'ایجاد' if created else 'به‌روز'} شد.",
-                             "data": serializer.data}, status=status.HTTP_200_OK)
-        else:
-            logger.error(f"Tool: Error updating HealthRecord for user {user.phone_number}: {serializer.errors}")
-            return Response({"status": "error", "message": "خطا در اطلاعات سلامتی.", "errors": serializer.errors},
-                            status=status.HTTP_400_BAD_REQUEST)
+        health_data_for_serializer = request.data.copy()
+        health_data_for_serializer.pop('user_id',
+                                       None)  # user_id را از داده‌های سریالایزر حذف می‌کنیم چون user آبجکت پاس داده می‌شود
 
+        # مقادیری که فقط در صورت ایجاد رکورد جدید استفاده می‌شوند
+        defaults_for_create = health_data_for_serializer.copy()
+
+        # اگر مدل HealthRecord شما به صورت OneToOne با User است:
+        # اگر رکوردی برای کاربر وجود داشته باشد، آن را می‌گیرد، در غیر این صورت یکی با مقادیر defaults_for_create می‌سازد.
+        record, created = HealthRecord.objects.get_or_create(user=user, defaults=defaults_for_create)
+
+        # اگر رکورد از قبل وجود داشته (created == False) و این یک درخواست PATCH است،
+        # باید داده‌ها را برای به‌روزرسانی اعمال کنیم.
+        # سریالایزر این کار را با partial=True انجام می‌دهد.
+
+        serializer = HealthRecordSerializer(instance=record, data=health_data_for_serializer, partial=True,
+                                            context={'request': request})
+
+        if serializer.is_valid():
+            serializer.save()  # متد save در سریالایزر، فیلد user را خودش مدیریت می‌کند یا شما باید آن را پاس دهید
+
+            action_message = 'ایجاد' if created else 'به‌روز'
+            response_status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+
+            logger.info(f"Tool: HealthRecord {action_message} for user {user.phone_number}.")
+            return Response({
+                "status": "success",
+                "message": f"اطلاعات سلامتی کاربر {user.phone_number} با موفقیت {action_message} شد.",
+                "data": serializer.data
+            }, status=response_status_code)
+        else:
+            logger.error(
+                f"Tool: Error updating/creating HealthRecord for user {user.phone_number}: {serializer.errors}")
+            return Response({
+                "status": "error",
+                "message": "خطا در اعتبارسنجی اطلاعات سلامتی.",
+                "errors": serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 class ToolUpdatePsychologicalProfileView(APIView):
     permission_classes = [IsMetisToolCallback]
