@@ -184,12 +184,19 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/goals/create/",
             "method": "POST",
             "args": [
-                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("goal_type", "نوع هدف (مثلاً شخصی، حرفه‌ای، مالی، سلامتی).", "STRING", True),
-                create_arg("description", "توضیح کامل هدف کاربر (مثلاً یادگیری زبان جدید).", "STRING", True),
-                create_arg("priority", "اولویت هدف (از 1 تا 5، 5 بالاترین اولویت).", "NUMBER", False),
-                create_arg("deadline", "تاریخ مهلت دستیابی به هدف در قالب Woche-MM-DD.", "STRING", False),
-                create_arg("progress", "درصد پیشرفت فعلی هدف (از 0.0 تا 100.0).", "NUMBER", False),
+                {"name": "user_id", "description": "شناسه یکتای کاربر در سیستم شما.", "type": "STRING",
+                 "required": True},
+                {"name": "goal_type", "description": "نوع هدف (مثلاً شخصی، حرفه‌ای، مالی، سلامتی).", "type": "STRING",
+                 "required": True},
+                {"name": "description", "description": "توضیح کامل هدف کاربر (مثلاً یادگیری زبان جدید).",
+                 "type": "STRING", "required": True},
+                {"name": "priority", "description": "اولویت هدف (از 1 تا 5، 5 بالاترین اولویت).", "type": "NUMBER",
+                 "required": False},
+                {"name": "deadline", "description": "تاریخ مهلت دستیابی به هدف در قالب Woche-MM-DD.", "type": "STRING",
+                 "required": False},
+                {"name": "progress", "description": "درصد پیشرفت فعلی هدف (از 0.0 تا 100.0).", "type": "NUMBER",
+                 "required": False}
+                # description برای آرگومان‌ها حذف نمی‌شود، فقط در بالای تابع create_arg نیست.
             ],
         })
         tools.append({
@@ -268,8 +275,8 @@ class MetisAIService:
                 create_arg("monthly_expenses", "هزینه‌های ماهانه.", "NUMBER", False),
                 create_arg("savings", "مقدار پس‌انداز.", "NUMBER", False),
                 create_arg("debts", "مقدار بدهی‌ها.", "NUMBER", False),
-                create_arg("investment_types", "انواع سرمایه‌گذاری (مثلاً سهام، املاک).", "STRING", False),
-                create_arg("financial_goals", "اهداف مالی (مثلاً خرید خانه، بازنشستگی).", "STRING", False),
+                create_arg("investment_types", "انواع سرمایه‌گذاری (مثل سهام، املاک).", "STRING", False),
+                create_arg("financial_goals", "اهداف مالی (مثلاً خرید خانه، بازنشندگی).", "STRING", False),
                 create_arg("risk_tolerance", "سطح تحمل ریسک (کم، متوسط، زیاد).", "STRING", False,
                            ["کم", "متوسط", "زیاد"]),
                 create_arg("budgeting_habits", "عادات بودجه‌بندی (مثلاً پس‌انداز ماهانه).", "STRING", False),
@@ -282,7 +289,7 @@ class MetisAIService:
             "method": "PATCH",
             "args": [
                 create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("key_relationships", "افراد کلیدی در زندگی (مثلاً خانواده، دوستان).", "STRING", False),
+                create_arg("key_relationships", "افراد کلیدی در زندگی (مثل خانواده، دوستان).", "STRING", False),
                 create_arg("relationship_status", "وضعیت روابط عاطفی (مثلاً در رابطه، مجرد، متأهل).", "STRING", False,
                            ["در رابطه", "مجرد", "متأهل", "مطلقه"]),
                 create_arg("communication_style", "سبک ارتباطی (مثلاً برون‌گرا، درون‌گرا).", "STRING", False),
