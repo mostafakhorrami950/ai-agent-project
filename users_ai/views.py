@@ -1243,10 +1243,10 @@ class AIAgentChatView(APIView):
 
                     if not current_session_instance:
                         logger.info(f"Starting new NORMAL chat session for user {user.phone_number}.")
-                        initial_metis_messages = [{"type": "SYSTEM",
-                                                   "content": self._get_user_context_for_ai(user_profile,
-                                                                                            for_setup_prompt=False)}]
-                        initial_metis_messages.append({"type": "USER", "content": user_message_content})
+                        initial_metis_messages = []  # لیست خالی
+                        # user_context_for_ai = self._get_user_context_for_ai(user_profile, for_setup_prompt=False) # موقتا غیرفعال
+                        # if user_context_for_ai: initial_metis_messages.append({"type": "SYSTEM", "content": user_context_for_ai }) # یا USER
+                        initial_metis_messages.append({"type": "USER", "content": user_message_content})  # فقط پیام کاربر
 
                         metis_response = metis_service.create_chat_session(
                             bot_id=metis_service.bot_id,
