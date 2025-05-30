@@ -170,10 +170,10 @@ class MetisAIService:
             logger.warning(
                 "Using default DJANGO_API_BASE_URL. Ensure this is configured in settings.py for production.")
 
-        def create_arg(name, description, arg_type, required, enum_values=None):
+        def create_arg(name, description, arg_type, required):  # enum_values حذف شد
             arg = {"name": name, "description": description, "type": arg_type, "required": required}
-            if enum_values:
-                arg["enumValues"] = enum_values
+            # if enum_values: # enum_values حذف شد
+            #    arg["enumValues"] = enum_values
             return arg
 
         tools = []
@@ -184,19 +184,12 @@ class MetisAIService:
             "url": f"{django_api_base_url}/tools/goals/create/",
             "method": "POST",
             "args": [
-                {"name": "user_id", "description": "شناسه یکتای کاربر در سیستم شما.", "type": "STRING",
-                 "required": True},
-                {"name": "goal_type", "description": "نوع هدف (مثلاً شخصی، حرفه‌ای، مالی، سلامتی).", "type": "STRING",
-                 "required": True},
-                {"name": "description", "description": "توضیح کامل هدف کاربر (مثلاً یادگیری زبان جدید).",
-                 "type": "STRING", "required": True},
-                {"name": "priority", "description": "اولویت هدف (از 1 تا 5، 5 بالاترین اولویت).", "type": "NUMBER",
-                 "required": False},
-                {"name": "deadline", "description": "تاریخ مهلت دستیابی به هدف در قالب Woche-MM-DD.", "type": "STRING",
-                 "required": False},
-                {"name": "progress", "description": "درصد پیشرفت فعلی هدف (از 0.0 تا 100.0).", "type": "NUMBER",
-                 "required": False}
-                # description برای آرگومان‌ها حذف نمی‌شود، فقط در بالای تابع create_arg نیست.
+                create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
+                create_arg("goal_type", "نوع هدف (مثلاً شخصی، حرفه‌ای، مالی، سلامتی).", "STRING", True),
+                create_arg("description", "توضیح کامل هدف کاربر (مثلاً یادگیری زبان جدید).", "STRING", True),
+                create_arg("priority", "اولویت هدف (از 1 تا 5، 5 بالاترین اولویت).", "NUMBER", False),
+                create_arg("deadline", "تاریخ مهلت دستیابی به هدف در قالب Woche-MM-DD.", "STRING", False),
+                create_arg("progress", "درصد پیشرفت فعلی هدف (از 0.0 تا 100.0).", "NUMBER", False),
             ],
         })
         tools.append({
@@ -209,11 +202,11 @@ class MetisAIService:
                 create_arg("medical_history", "تاریخچه پزشکی کاربر (بیماری‌های گذشته، جراحی‌ها).", "STRING", False),
                 create_arg("chronic_conditions", "بیماری‌های مزمن کاربر (مثل دیابت، فشار خون).", "STRING", False),
                 create_arg("allergies", "آلرژی‌های کاربر (مثل حساسیت به دارو یا غذا).", "STRING", False),
-                create_arg("diet_type", "نوع رژیم غذایی (مثلاً گیاه‌خواری، بدون گلوتن).", "STRING", False,
-                           ["گیاه‌خواری", "وگان", "بدون گلوتن", "عادی"]),
+                create_arg("diet_type", "نوع رژیم غذایی (مثلاً گیاه‌خواری، بدون گلوتن).", "STRING", False),
+                # enumValues حذف شد
                 create_arg("daily_calorie_intake", "میانگین کالری مصرفی روزانه.", "NUMBER", False),
-                create_arg("physical_activity_level", "سطح فعالیت بدنی (کم، متوسط، زیاد).", "STRING", False,
-                           ["کم", "متوسط", "زیاد"]),
+                create_arg("physical_activity_level", "سطح فعالیت بدنی (کم، متوسط، زیاد).", "STRING", False),
+                # enumValues حذف شد
                 create_arg("height", "قد کاربر به سانتی‌متر (مثلاً 175.5).", "NUMBER", False),
                 create_arg("weight", "وزن کاربر به کیلوگرم (مثلاً 70.2).", "NUMBER", False),
                 create_arg("bmi", "شاخص توده بدنی (BMI).", "NUMBER", False),
@@ -234,14 +227,14 @@ class MetisAIService:
                 create_arg("personality_type", "تیپ شخصیتی (مثلاً MBTI: INFP، یا Big Five).", "STRING", False),
                 create_arg("core_values", "ارزش‌های اصلی کاربر (مثلاً خانواده، موفقیت، آزادی).", "STRING", False),
                 create_arg("motivations", "انگیزه‌های کاربر (مثلاً رشد شخصی، ثبات مالی).", "STRING", False),
-                create_arg("decision_making_style", "سبک تصمیم‌گیری (منطقی، احساسی، ترکیبی).", "STRING", False,
-                           ["منطقی", "احساسی", "ترکیبی"]),
+                create_arg("decision_making_style", "سبک تصمیم‌گیری (منطقی، احساسی، ترکیبی).", "STRING", False),
+                # enumValues حذف شد
                 create_arg("stress_response", "واکنش به استرس (مثلاً اجتناب، مقابله فعال).", "STRING", False),
                 create_arg("emotional_triggers", "محرک‌های احساسی (مثلاً انتقاد یا فشار کاری).", "STRING", False),
-                create_arg("preferred_communication", "سبک ارتباطی (مستقیم، غیرمستقیم).", "STRING", False,
-                           ["مستقیم", "غیرمستقیم"]),
-                create_arg("resilience_level", "سطح تاب‌آوری روانی (کم، متوسط، زیاد).", "STRING", False,
-                           ["کم", "متوسط", "زیاد"]),
+                create_arg("preferred_communication", "سبک ارتباطی (مستقیم، غیرمستقیم).", "STRING", False),
+                # enumValues حذف شد
+                create_arg("resilience_level", "سطح تاب‌آوری روانی (کم، متوسط، زیاد).", "STRING", False),
+                # enumValues حذف شد
             ]
         })
         tools.append({
@@ -259,8 +252,8 @@ class MetisAIService:
                 create_arg("job_satisfaction", "سطح رضایت شغلی (از 1 تا 10).", "NUMBER", False),
                 create_arg("career_goals", "اهداف حرفه‌ای (مثلاً ارتقا، تغییر شغل).", "STRING", False),
                 create_arg("work_hours", "میانگین ساعات کاری هفتگی (مثلاً 40.5).", "NUMBER", False),
-                create_arg("learning_style", "سبک یادگیری (بصری، شنیداری، عملی).", "STRING", False,
-                           ["بصری", "شنیداری", "عملی"]),
+                create_arg("learning_style", "سبک یادگیری (بصری، شنیداری، عملی).", "STRING", False),
+                # enumValues حذف شد
                 create_arg("certifications", "گواهینامه‌های حرفه‌ای.", "STRING", False),
             ]
         })
@@ -275,10 +268,9 @@ class MetisAIService:
                 create_arg("monthly_expenses", "هزینه‌های ماهانه.", "NUMBER", False),
                 create_arg("savings", "مقدار پس‌انداز.", "NUMBER", False),
                 create_arg("debts", "مقدار بدهی‌ها.", "NUMBER", False),
-                create_arg("investment_types", "انواع سرمایه‌گذاری (مثل سهام، املاک).", "STRING", False),
-                create_arg("financial_goals", "اهداف مالی (مثلاً خرید خانه، بازنشندگی).", "STRING", False),
-                create_arg("risk_tolerance", "سطح تحمل ریسک (کم، متوسط، زیاد).", "STRING", False,
-                           ["کم", "متوسط", "زیاد"]),
+                create_arg("investment_types", "انواع سرمایه‌گذاری (مثلاً سهام، املاک).", "STRING", False),
+                create_arg("financial_goals", "اهداف مالی (مثلاً خرید خانه، بازنشستگی).", "STRING", False),
+                create_arg("risk_tolerance", "سطح تحمل ریسک (کم، متوسط، زیاد).", "STRING", False),  # enumValues حذف شد
                 create_arg("budgeting_habits", "عادات بودجه‌بندی (مثلاً پس‌انداز ماهانه).", "STRING", False),
             ]
         })
@@ -289,13 +281,13 @@ class MetisAIService:
             "method": "PATCH",
             "args": [
                 create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
-                create_arg("key_relationships", "افراد کلیدی در زندگی (مثل خانواده، دوستان).", "STRING", False),
-                create_arg("relationship_status", "وضعیت روابط عاطفی (مثلاً در رابطه، مجرد، متأهل).", "STRING", False,
-                           ["در رابطه", "مجرد", "متأهل", "مطلقه"]),
+                create_arg("key_relationships", "افراد کلیدی در زندگی (مثلاً خانواده، دوستان).", "STRING", False),
+                create_arg("relationship_status", "وضعیت روابط عاطفی (مثلاً در رابطه، مجرد، متأهل).", "STRING", False),
+                # enumValues حذف شد
                 create_arg("communication_style", "سبک ارتباطی (مثلاً برون‌گرا، درون‌گرا).", "STRING", False),
                 create_arg("emotional_needs", "نیازهای عاطفی (مثلاً حمایت، تأیید).", "STRING", False),
-                create_arg("social_frequency", "میزان تعاملات اجتماعی (روزانه، هفتگی، ماهانه).", "STRING", False,
-                           ["روزانه", "هفتگی", "ماهانه", "کم", "زیاد"]),
+                create_arg("social_frequency", "میزان تعاملات اجتماعی (روزانه، هفتگی، ماهانه).", "STRING", False),
+                # enumValues حذف شد
                 create_arg("conflict_resolution", "روش‌های حل تعارض در روابط.", "STRING", False),
             ]
         })
@@ -324,10 +316,10 @@ class MetisAIService:
             "args": [
                 create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
                 create_arg("current_city", "شهر محل زندگی فعلی.", "STRING", False),
-                create_arg("climate", "وضعیت آب‌وهوایی محل زندگی (مثل معتدل، گرم، سرد).", "STRING", False,
-                           ["معتدل", "گرم", "سرد", "خشک", "مرطوب"]),
-                create_arg("housing_type", "نوع محل سکونت (آپارتمان، خانه ویلایی).", "STRING", False,
-                           ["آپارتمان", "خانه ویلایی", "پنت هاوس", "استودیو"]),
+                create_arg("climate", "وضعیت آب‌وهوایی محل زندگی (مثلاً معتدل، گرم، سرد).", "STRING", False),
+                # enumValues حذف شد
+                create_arg("housing_type", "نوع محل سکونت (آپارتمان، خانه ویلایی).", "STRING", False),
+                # enumValues حذف شد
                 create_arg("tech_access", "دسترسی به فناوری (مثل گوشی هوشمند، اینترنت پرسرعت).", "STRING", False),
                 create_arg("life_events", "رویدادهای مهم زندگی (مثل ازدواج، نقل‌مکان، تولد فرزند).", "STRING", False),
                 create_arg("transportation", "وسایل حمل‌ونقل مورد استفاده (مثلاً ماشین شخصی، مترو، اتوبوس).", "STRING",
@@ -342,8 +334,8 @@ class MetisAIService:
             "args": [
                 create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
                 create_arg("current_location", "مکان فعلی کاربر (مثلاً مختصات GPS یا نام مکان).", "STRING", False),
-                create_arg("current_mood", "حال و هوای لحظه‌ای (مثلاً خوشحال، مضطرب، خنثی).", "STRING", False,
-                           ["خوشحال", "غمگین", "مضطرب", "عصبی", "آرام", "هیجان زده", "خسته", "خنثی"]),
+                create_arg("current_mood", "حال و هوای لحظه‌ای (مثلاً خوشحال، مضطرب، خنثی).", "STRING", False),
+                # enumValues حذف شد
                 create_arg("current_activity", "فعالیت فعلی (مثلاً کار، استراحت، ورزش).", "STRING", False),
                 create_arg("daily_schedule", "برنامه روزانه (مثلاً جلسات، وظایف).", "STRING", False),
                 create_arg("heart_rate", "ضربان قلب کاربر.", "NUMBER", False),
@@ -372,13 +364,12 @@ class MetisAIService:
                 create_arg("first_name", "نام کوچک کاربر.", "STRING", False),
                 create_arg("last_name", "نام خانوادگی کاربر.", "STRING", False),
                 create_arg("age", "سن کاربر.", "NUMBER", False),
-                create_arg("gender", "جنسیت کاربر.", "STRING", False, ["مرد", "زن", "سایر"]),
+                create_arg("gender", "جنسیت کاربر.", "STRING", False),  # enumValues حذف شد
                 create_arg("nationality", "ملیت کاربر.", "STRING", False),
                 create_arg("location", "محل زندگی کاربر (شهر یا کشور).", "STRING", False),
                 create_arg("languages", "زبان‌های مورد استفاده کاربر.", "STRING", False),
                 create_arg("cultural_background", "اطلاعات فرهنگی و ارزش‌های کاربر.", "STRING", False),
-                create_arg("marital_status", "وضعیت تأهل (مجرد، متأهل، مطلقه).", "STRING", False,
-                           ["مجرد", "متأهل", "مطلقه", "جدا شده", "بیوه"]),
+                create_arg("marital_status", "وضعیت تأهل (مجرد، متأهل، مطلقه).", "STRING", False),  # enumValues حذف شد
                 create_arg("ai_psychological_test", "نتیجه تست روانشناسی کاربر.", "STRING", False),
                 create_arg("user_information_summary",
                            "خلاصه‌ای از تمام اطلاعات کاربر که با استفاده از هوش مصنوعی خلاصه شده است.", "STRING",
@@ -401,7 +392,7 @@ class MetisAIService:
         tools.append({
             "name": "update_psych_test_record",
             "description": "یک رکورد تست روانشناسی موجود کاربر را به‌روزرسانی می‌کند. باید pk رکورد را ارائه دهید.",
-            "url": f"{django_api_base_url}/tools/psych-test-history/update/",  # Removed <int:pk>/
+            "url": f"{django_api_base_url}/tools/psych-test-history/update/",
             "method": "PATCH",
             "args": [
                 create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
@@ -415,7 +406,7 @@ class MetisAIService:
         tools.append({
             "name": "delete_psych_test_record",
             "description": "یک رکورد تست روانشناسی موجود کاربر را حذف می‌کند. باید pk رکورد را ارائه دهید.",
-            "url": f"{django_api_base_url}/tools/psych-test-history/delete/",  # Removed <int:pk>/
+            "url": f"{django_api_base_url}/tools/psych-test-history/delete/",
             "method": "DELETE",
             "args": [
                 create_arg("user_id", "شناسه یکتای کاربر در سیستم شما.", "STRING", True),
