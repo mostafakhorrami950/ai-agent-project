@@ -346,14 +346,13 @@ class Goal(models.Model):
 
 # 12. جدول Habits (عادات)
 class Habit(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='habits',
-                             verbose_name='کاربر')
-    habit_name = models.CharField(max_length=255, verbose_name='نام عادت')  # Made non-blank
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='habits', verbose_name='کاربر')
+    # خط زیر اصلاح شده است:
+    habit_name = models.CharField(max_length=255, verbose_name='نام عادت', default='عادت تعریف نشده') # اضافه کردن default
     frequency = models.CharField(max_length=100, blank=True, null=True, verbose_name='فرکانس')
     duration = models.IntegerField(blank=True, null=True, help_text="به دقیقه", verbose_name='مدت زمان (دقیقه)')
     start_date = models.DateField(blank=True, null=True, verbose_name='تاریخ شروع')
-    success_rate = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True,
-                                       verbose_name='درصد موفقیت')
+    success_rate = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True, verbose_name='درصد موفقیت')
 
     def __str__(self):
         return f"Habit for {self.user.phone_number}: {self.habit_name}"
