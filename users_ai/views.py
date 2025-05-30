@@ -1083,8 +1083,6 @@ class AIAgentChatView(APIView):
             return Response({'detail': 'محتوای پیام الزامی است.'}, status=status.HTTP_400_BAD_REQUEST)
 
 
-
-
         try:
             with transaction.atomic():
                 if session_id_from_request:
@@ -1243,26 +1241,18 @@ class AIAgentChatView(APIView):
                         return Response({'detail': 'محدودیت پیام روزانه شما به پایان رسیده است.'},
                                         status=status.HTTP_429_TOO_MANY_REQUESTS)
 
-                    # داخل AIAgentChatView.post، در بخشی که initial_metis_messages ساخته می‌شود:
-                    # ...
                     if not current_session_instance:
-                        # ...
-                        initial_metis_messages = []
-                        # user_context_for_ai = self._get_user_context_for_ai(user_profile) # موقتا غیرفعال شود
-                        # if user_context_for_ai: initial_metis_messages.append({"type": "USER", "content": user_context_for_ai})
-                        initial_metis_messages.append(
-                            {"type": "USER", "content": user_message_content})  # فقط پیام کاربر ارسال شود
-
-                        logger.info(
-                            f"Starting new Metis AI session for user {user.phone_number} with SIMPLIFIED initial messages.")
-                        user_data_for_metis = self._get_user_info_for_metis_api(user_profile)
+                        logger.info(f"Starting new NORMAL chat session for user {user.phone_number}.")
+                        initial_metis_messages = [{"type": "SYSTEM",
+                                                   "content": self._get_user_context_for_ai(user_profile,
+                                                                                            for_setup_prompt=False)}]
+                        initial_metis_messages.append({"type": "USER", "content": user_message_content})
 
                         metis_response = metis_service.create_chat_session(
                             bot_id=metis_service.bot_id,
-                            user_data=user_data_for_metis,
+                            user_data=self._get_user_info_for_metis_api(user_profile),
                             initial_messages=initial_metis_messages
                         )
-                        # ...
                         metis_session_id = metis_response.get('id')
                         ai_final_response_content = metis_response.get('content',
                                                                        'پاسخی از طرف دستیار دریافت نشد (هنگام ایجاد جلسه عادی).')
