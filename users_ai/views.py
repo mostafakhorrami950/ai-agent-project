@@ -15,6 +15,7 @@ from .permissions import IsMetisToolCallback
 from django.conf import settings
 from datetime import timedelta
 from django.http import Http404
+from openai import OpenAI
 
 # Import your models
 from .models import (
@@ -1376,3 +1377,38 @@ class PsychTestHistoryDetail(generics.RetrieveUpdateDestroyAPIView):
     lookup_field = 'pk'
 
     def get_queryset(self): return PsychTestHistory.objects.filter(user=self.request.user)
+
+
+class OpenAIChatView(APIView):
+    permission_classes = [permissions.AllowAny]
+    http_method_names = ['post']
+
+    def post(self, request, *args, **kwargs):
+        if not settings.OPENAI_API_KEY:
+            return Response({"error": "OPENAI_API_KEY is not configured on the server."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        try:
+            messages = request.data.get('messages')
+            if not messages or not isinstance(messages, list):
+                user_message = request.data.get('message')
+                if not user_message:
+                    return Response({"detail": "messages (list of role/content) یا message (string) لازم است."}, status=status.HTTP_400_BAD_REQUEST)
+                messages = [{"role": "user", "content": str(user_message)}]
+
+            model = request.data.get('model', 'gpt-4o-mini')
+            temperature = float(request.data.get('temperature', 0.7))
+
+            client = OpenAI(api_key=settings.OPENAI_API_KEY)
+            completion = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+            )
+
+            reply = completion.choices[0].message.content if completion.choices else ""
+            return Response({
+                "reply": reply,
+                "model": model
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
