@@ -14,6 +14,7 @@ from .views import (
     GoalListCreate, GoalDetail, HabitListCreate, HabitDetail,
     AIAgentChatView, AiChatSessionListCreate, AiChatSessionDetail, TestTimeView, PsychTestHistoryView,
     PsychTestHistoryDetail,  # این ویو را در فایل views.py قبلی داشتید، اضافه می‌کنم
+    OpenAIChatView,
     # Tool Views
     ToolUpdateUserProfileDetailsView, ToolUpdateHealthRecordView, ToolUpdatePsychologicalProfileView,
     ToolUpdateCareerEducationView, ToolUpdateFinancialInfoView, ToolUpdateSocialRelationshipView,
@@ -51,6 +52,7 @@ urlpatterns = [
     path('psych-test-history/<int:pk>/', PsychTestHistoryDetail.as_view(), name='psych-test-history-detail'),
 
     path('ai-agent/chat/', AIAgentChatView.as_view(), name='ai-agent-chat'),
+    path('openai/chat/', OpenAIChatView.as_view(), name='openai-chat'),
     path('ai-sessions/', AiChatSessionListCreate.as_view(), name='ai-session-list'),  # Create از طریق chat انجام می‌شود
     path('ai-sessions/<uuid:pk>/', AiChatSessionDetail.as_view(), name='ai-session-detail'),
     # اگر ai_session_id شما UUID است، pk را به uuid تغییر دهید
